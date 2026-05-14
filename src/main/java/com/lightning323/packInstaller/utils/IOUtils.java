@@ -12,53 +12,9 @@ import java.nio.file.Paths;
 import java.util.stream.Collectors;
 
 import static com.lightning323.packInstaller.PackInstaller.PATHS_TO_SPARE;
+import static com.lightning323.packInstaller.PackInstaller.SKIP_HASH_CHECK;
 
 public class IOUtils {
-
-
-    public static void checkAndDownloadFile(URL baseUrl, File baseSaveDir, String hashFormat,
-                                            FileEntry entry)
-            throws IOException, SecurityException, URISyntaxException, InterruptedException {
-
-        URL fileURL = getRelativeUrl(baseUrl, entry.file());
-
-        HttpURLConnection conn = (HttpURLConnection) fileURL.openConnection();
-        File outFile = new File(baseSaveDir, entry.file());
-        File dir = outFile.getParentFile();
-        dir.mkdirs();
-        //Add the directory to the list of downloaded directories
-        FileCleanup.add(baseSaveDir, dir.toPath());
-        if (outFile.exists()) {
-            //If a file already exist, check if they are the same
-            byte[] existingFile = Files.readAllBytes(outFile.toPath());
-            String existingFileHash = HashUtils.getHash(hashFormat, existingFile);
-            if (existingFileHash.equals(entry.hash())) {
-                return; //The files are the same
-            }
-
-            if (!PackInstaller.FULL_RESET) {
-                Path filePath = Paths.get(entry.file());
-                if (PATHS_TO_SPARE.contains(filePath)) {  //Check if the file is in the DONT_OVERWRITE list
-                    System.out.println("Skipping: " + entry.file());
-                    return;
-                }
-                for (Path path : PackInstaller.PATHS_TO_SPARE) { //Check if the file is in a directory in the DONT_OVERWRITE list
-                    if (isInsideOrEqual(filePath, path)) {
-                        System.out.println("Skipping directory: " + path);
-                        return;
-                    }
-                }
-            }
-        }
-
-        //Overwrite/write the file
-        ByteArrayOutputStream writer = new ByteArrayOutputStream();
-        System.out.println("Downloading: " + entry.file());
-        try (var inputStream = conn.getInputStream()) {
-            writer.write(inputStream.readAllBytes());
-        }
-        writeFile(hashFormat, writer.toByteArray(), outFile, entry.hash());
-    }
 
     public static boolean isInsideOrEqual(Path child, Path parent) {
         // 1. Normalize and get absolute paths to handle "." or ".." or relative vs absolute
@@ -70,8 +26,8 @@ public class IOUtils {
     }
 
     public static void writeFile(String hashFormat, byte[] bytes, File outFile, String hash) throws IOException {
-        //Verify the hash
-        if (!HashUtils.getHash(hashFormat, bytes).equals(hash)) {
+        //Assert the hash
+        if (!SKIP_HASH_CHECK && !HashUtils.getHash(hashFormat, bytes).equals(hash)) {
             throw new IOException("Hash for \"" + outFile.toPath() + "\" does not match!");
         }
         Files.write(outFile.toPath(), bytes);

@@ -7,6 +7,7 @@ import com.lightning323.packInstaller.utils.ModDownloader;
 
 import java.io.IOException;
 import java.net.URISyntaxException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.io.File;
 import java.util.HashSet;
@@ -22,51 +23,31 @@ public class FileCleanup {
      * If a jar was added that does NOT have a .pw.toml file, it will be skipped
      */
     static HashSet<Path> cleanDirectories = new HashSet<>();
+    static HashSet<Path> modFiles = new HashSet<>();
 
     public static void deleteUnIncludedFiles(File saveDir, IndexFile indexData) throws IOException {
         System.out.println("\n--- Deleting Unincluded Files ---");
 
         HashSet<Path> filesThatShouldExist = new HashSet<>();
+        HashSet<Path> modsToSkip = new HashSet<>();
+
+        Path baseDir = saveDir.toPath().toAbsolutePath().normalize();
+
+        //Add the files that should exist so know what files to delete
         for (FileEntry fe : indexData.files) {
-            //For .pw.toml files
-            if (fe.file().endsWith(MOD_TOML_FILE_EXT)) {
-                //Only add the .pw.toml files if we need it to determine which mods have been added manually
-                if (SPARE_ADDED_MODS || KEEP_PW_TOML_FILES) filesThatShouldExist.add(Path.of(fe.file()));
-                //Add the jar file to the entry
-                File pwTomlFile = new File(saveDir, fe.file());
-                ModFile modFile = ModDownloader.getFileEntry(pwTomlFile);
-
-                File jarFile = Path.of(fe.file()).resolveSibling(modFile.filename).toFile();
-                filesThatShouldExist.add(jarFile.toPath());
-            }
-            //For other files
-            else {
-                filesThatShouldExist.add(Path.of(fe.file()));
-            }
+            filesThatShouldExist.add(Path.of(fe.file()));
         }
+        modFiles.forEach( (f)->{
+            Path full = f.toAbsolutePath().normalize();
+            Path fileRelativePath = baseDir.relativize(full);
+            filesThatShouldExist.add(fileRelativePath);
+        });
 
-        //Populate our jars with toml files
-        HashSet<Path> jarsWithTomlFiles = new HashSet<>();
-        if (SPARE_ADDED_MODS) {
-            for (File file : new File(saveDir, "mods").listFiles()) {
-                if (file.getName().endsWith(MOD_TOML_FILE_EXT)) {
-                    ModFile modFile = ModDownloader.getFileEntry(file);
-                    Path jarFile = Path.of(file.getPath()).resolveSibling(modFile.filename);
-
-                    Path base = saveDir.toPath().toAbsolutePath().normalize();
-                    Path full = jarFile.toAbsolutePath().normalize();
-                    jarFile = base.relativize(full);
-                    jarsWithTomlFiles.add(jarFile);
-                }
-            }
-        }
-
-        Path base = saveDir.toPath().toAbsolutePath().normalize();
         try {
             Path jarFull = Path.of(PackInstaller.class.getProtectionDomain().getCodeSource().getLocation().toURI())
                     .toAbsolutePath().normalize();
             //Get the path to ourselves so we can skip deleting ourselves
-            Path ownJarfilePath = base.relativize(jarFull);
+            Path ownJarfilePath = baseDir.relativize(jarFull);
 
             //Now delete files within downloaded directories that arent on the list
             FileCleanup.getCleanDirectories().forEach(path -> {
@@ -85,7 +66,7 @@ public class FileCleanup {
                 for (File file : path.toFile().listFiles()) {
                     if (file.exists() && !file.isDirectory()) {
                         Path full = file.toPath().toAbsolutePath().normalize();
-                        Path fileRelativePath = base.relativize(full);
+                        Path fileRelativePath = baseDir.relativize(full);
 
                         if (fileRelativePath.equals(ownJarfilePath)) { //Dont delete ourselves!
                             System.out.println("Skipping own jarfile: " + ownJarfilePath);
@@ -96,13 +77,13 @@ public class FileCleanup {
                         if (!filesThatShouldExist.contains(fileRelativePath)) {
                             //Spare jarfiles that dont have a toml file, because they were likely added manually
                             if (!FULL_RESET) {
-                                if (PATHS_TO_SPARE.contains(fileRelativePath) ||
-                                        (SPARE_ADDED_MODS &&
-                                                fileRelativePath.getFileName().toString().endsWith(".jar")
-                                                && !jarsWithTomlFiles.contains(fileRelativePath))
-                                ) {
+                                if (PATHS_TO_SPARE.contains(fileRelativePath)) {
                                     //We can spare files that don't have a toml file because they were likely added manually
                                     System.out.println("Skipping: " + fileRelativePath);
+                                    continue;
+                                } else if(modsToSkip.contains(fileRelativePath)){
+                                    //We can spare files that don't have a toml file because they were likely added manually
+                                    System.out.println("Skipping mod: " + fileRelativePath);
                                     continue;
                                 }
                             }

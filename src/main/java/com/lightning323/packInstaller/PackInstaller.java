@@ -57,8 +57,8 @@ public class PackInstaller implements Runnable {
     @Option(names = {"-sm", "--spare-added-mods"}, description = "If we should spare mods added by the user")
     public static boolean SPARE_ADDED_MODS = false;
 
-    @Option(names = {"-kpt", "--keep-pw-toml"}, description = "If we should keep .pw.toml files")
-    public static boolean KEEP_PW_TOML_FILES = false;
+    @Option(names = {"-sh", "--ship-hash-check"}, description = "If we should skip checking hashes")
+    public static boolean SKIP_HASH_CHECK = false;
 
     @Option(
             names = {"--spare"},
@@ -82,12 +82,16 @@ public class PackInstaller implements Runnable {
         UIUtils.detachedAlert("Installation failed", message);
         if (t != null && t.getMessage() != null) {
             System.err.println(t.getMessage());
+            t.printStackTrace();
         }
         System.exit(1);
     }
 
     @Override
     public void run() {
+        if(SKIP_HASH_CHECK){
+            System.out.println("WARNING: Skipping hash check is not recommended for security reasons. use at your own risk!");
+        }
         if (PACK_TOML_URL == null) {
             System.err.println("Pack TOML URL is required");
             CommandLine.usage(this, System.out);
@@ -138,8 +142,8 @@ public class PackInstaller implements Runnable {
                 for (FileEntry entry : indexData.files) {
                     if (!stop.get()) workerPool.submit(() -> {
                         try {
-                            IOUtils.checkAndDownloadFile(indexURL, SAVE_DIR, config.index.hashFormat, entry);
-                            ModDownloader.checkAndDownloadMod(entry, SAVE_DIR);
+                            FileDownloading.checkAndDownloadFile(indexURL, SAVE_DIR, config.index.hashFormat, entry);
+
 
                             if (System.currentTimeMillis() - startTime > 2000 && popup.get()) {
                                 popup.set(false);
@@ -170,6 +174,7 @@ public class PackInstaller implements Runnable {
 
         } catch (Exception e) {
             fail("Could not complete installation: ", e);
+
         }
     }
 
