@@ -30,7 +30,7 @@ import static com.lightning323.packInstaller.utils.IOUtils.getRelativeUrl;
 @Command(
         name = "packwiz pack installer",
         mixinStandardHelpOptions = true,
-        version = "1.0.1",
+        version = "1.0.2",
         headerHeading = "%n", // Adds a newline before the header
         header = {
                 "@|fg(cyan)  _       _       ___       __ ___            _  _  |@",
@@ -45,7 +45,7 @@ import static com.lightning323.packInstaller.utils.IOUtils.getRelativeUrl;
 public class PackInstaller implements Runnable {
 
 
-    @Option(names = {"-u", "--url"}, description = "packwiz pack.toml URL")
+    @Option(names = {"-u", "--url"}, description = "URL to the packwiz pack.toml file")
     public static URL PACK_TOML_URL;
 
     @Option(names = {"-s", "--save"}, description = "The output save directory (default: ./)", defaultValue = "./")
@@ -66,6 +66,8 @@ public class PackInstaller implements Runnable {
             split = ","
     )
     public static HashSet<Path> PATHS_TO_SPARE = new HashSet<>();
+    public static FileCleanup fileCleanup;
+
     static {
         PATHS_TO_SPARE.add(Paths.get("options.txt"));
         PATHS_TO_SPARE.add(Paths.get("servers.dat"));
@@ -119,6 +121,8 @@ public class PackInstaller implements Runnable {
 
 
             if (config.index != null) {
+
+
                 System.out.println("\n--- Index ---");
                 if (config.index.file == null) throw new IllegalArgumentException("Index file cannot be null");
                 System.out.println("Index File Path: " + config.index.file);
@@ -132,6 +136,7 @@ public class PackInstaller implements Runnable {
                 String indexContent = fetchString(indexURL);
                 IndexFile indexData = mapper.readValue(indexContent, IndexFile.class);
                 SAVE_DIR.mkdirs();
+                fileCleanup = new FileCleanup(SAVE_DIR);
                 if (!SAVE_DIR.exists()) {
                     fail("Failed to create save directory in " + SAVE_DIR.getAbsolutePath());
                 }
@@ -162,7 +167,7 @@ public class PackInstaller implements Runnable {
                     workerPool.shutdownNow();
                 }
                 System.out.println("\n--- Download Complete ---");
-                FileCleanup.deleteUnIncludedFiles(SAVE_DIR, indexData);
+                fileCleanup.deleteUnIncludedFiles(indexData);
                 System.out.println("\n--- Cleanup Complete ---");
 
                 if (System.currentTimeMillis() - startTime > 2000) {

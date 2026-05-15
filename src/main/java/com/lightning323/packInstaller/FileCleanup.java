@@ -3,13 +3,14 @@ package com.lightning323.packInstaller;
 import com.lightning323.packInstaller.fileTypes.FileEntry;
 import com.lightning323.packInstaller.fileTypes.IndexFile;
 import com.lightning323.packInstaller.fileTypes.ModFile;
+import com.lightning323.packInstaller.utils.IOUtils;
 import com.lightning323.packInstaller.utils.ModDownloader;
 
-import java.io.IOException;
+import java.io.*;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.io.File;
+import java.nio.file.Paths;
 import java.util.HashSet;
 
 import static com.lightning323.packInstaller.PackInstaller.*;
@@ -22,25 +23,53 @@ public class FileCleanup {
      * Each jar that is supposed to be here has a .pw.toml file
      * If a jar was added that does NOT have a .pw.toml file, it will be skipped
      */
-    static HashSet<Path> cleanDirectories = new HashSet<>();
-    static HashSet<Path> modFiles = new HashSet<>();
+   HashSet<Path> cleanDirectories = new HashSet<>();
+   HashSet<Path> modFiles = new HashSet<>();
+   HashSet<Path> filesThatShouldExist = new HashSet<>();
+   Path baseDir;
 
-    public static void deleteUnIncludedFiles(File saveDir, IndexFile indexData) throws IOException {
+   public FileCleanup(File saveDir){
+       baseDir = saveDir.toPath().toAbsolutePath().normalize();
+   }
+
+    private void saveFilesThatShouldExist(Path savePath) throws IOException {
+        try(BufferedWriter writer = new BufferedWriter(new FileWriter(savePath.toFile()))){
+            writer.write(relativize(savePath).toString()); //Add ourselves
+            for (Path f : filesThatShouldExist) {
+                writer.write(relativize(f).toString());
+            }
+        }
+    }
+
+    public void readFilesThatShouldExist(Path readPath) throws IOException {
+        try(BufferedReader reader = Files.newBufferedReader(readPath)){
+            reader.lines().forEach(line -> {
+                Path file = Paths.get(line);
+                filesThatShouldExist.add(file.toAbsolutePath().normalize());
+            });
+        }
+    }
+
+    private Path relativize(Path f){
+        Path full = f.toAbsolutePath().normalize();
+        Path fileRelativePath = baseDir.relativize(full);
+        return fileRelativePath;
+    }
+
+    public void deleteUnIncludedFiles(IndexFile indexData) throws IOException {
         System.out.println("\n--- Deleting Unincluded Files ---");
 
-        HashSet<Path> filesThatShouldExist = new HashSet<>();
+
         HashSet<Path> modsToSkip = new HashSet<>();
 
-        Path baseDir = saveDir.toPath().toAbsolutePath().normalize();
+
 
         //Add the files that should exist so know what files to delete
         for (FileEntry fe : indexData.files) {
             filesThatShouldExist.add(Path.of(fe.file()));
         }
         modFiles.forEach( (f)->{
-            Path full = f.toAbsolutePath().normalize();
-            Path fileRelativePath = baseDir.relativize(full);
-            filesThatShouldExist.add(fileRelativePath);
+            filesThatShouldExist.add(relativize(f));
         });
 
         try {
@@ -50,9 +79,9 @@ public class FileCleanup {
             Path ownJarfilePath = baseDir.relativize(jarFull);
 
             //Now delete files within downloaded directories that arent on the list
-            FileCleanup.getCleanDirectories().forEach(path -> {
+            getCleanDirectories().forEach(path -> {
                 //IMPORTANT SAFETY CHECK, make sure the path is inside the save directory
-                if (!isInsideOrEqual(path, saveDir.toPath()))
+                if (!isInsideOrEqual(path, baseDir))
                     throw new RuntimeException("Path " + path + " is not inside the save directory");
                 if (!FULL_RESET) {
                     for (Path spareDir : PATHS_TO_SPARE) {
@@ -99,11 +128,11 @@ public class FileCleanup {
     }
 
 
-    public static HashSet<Path> getCleanDirectories() {
+    public  HashSet<Path> getCleanDirectories() {
         return cleanDirectories;
     }
 
-    public static synchronized void add(File saveDir, Path newPath) {
+    public  synchronized void add(File saveDir, Path newPath) {
         Path savePath = saveDir.toPath().toAbsolutePath().normalize();
         Path normalizedNew = newPath.toAbsolutePath().normalize();
         //Dont add base directory as a cleanup directory

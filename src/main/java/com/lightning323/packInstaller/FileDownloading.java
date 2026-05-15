@@ -18,6 +18,7 @@ import static com.lightning323.packInstaller.utils.IOUtils.*;
 import static com.lightning323.packInstaller.utils.ModDownloader.MOD_TOML_FILE_EXT;
 
 public class FileDownloading {
+
     public static void checkAndDownloadFile(URL baseUrl, File baseSaveDir, String hashFormat,
                                             FileEntry entry)
             throws IOException, SecurityException, URISyntaxException, InterruptedException {
@@ -31,7 +32,7 @@ public class FileDownloading {
         saveDir.mkdirs();
 
         //Add the directory to the list of downloaded directories
-        FileCleanup.add(baseSaveDir, saveDir.toPath());
+        PackInstaller.fileCleanup.add(baseSaveDir, saveDir.toPath());
         String outHash = entry.hash();
 
         ModFile modFile = null;
@@ -45,7 +46,7 @@ public class FileDownloading {
             outFile = new File(saveDir, modFile.filename); //We need to compare the mod file itself not the pw.toml file
             outHash = modFile.download.hash;
             hashFormat = modFile.download.hashFormat;
-            FileCleanup.modFiles.add(outFile.toPath());
+            PackInstaller.fileCleanup.modFiles.add(outFile.toPath());
         }
 
         if (outFile.exists()) {
