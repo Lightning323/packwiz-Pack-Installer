@@ -29,7 +29,7 @@ import static com.lightning323.packInstaller.utils.IOUtils.getRelativeUrl;
 @Command(
         name = "packwiz pack installer",
         mixinStandardHelpOptions = true,
-        version = "1.0.2",
+        version = "1.0.3",
         headerHeading = "%n", // Adds a newline before the header
         header = {
                 "@|fg(cyan)  _       _       ___       __ ___            _  _  |@",
@@ -144,10 +144,7 @@ public class PackInstaller implements Runnable {
                 fileCleanup = new FileCleanup(saveDir);
                 fileCleanup.calculateModsToSpare(indexURL, indexData);
 
-//                //Download the index file itself
-//                FileDownloading.checkAndDownloadFile(indexURL, saveDir, config.index.hashFormat, new FileEntry(config.index.file, config.index.hash));
-
-                System.out.println("\n\n" +
+                System.out.println("\n" +
                         "--- Downloading to " + saveDir.getAbsolutePath() + " ---");
                 AtomicBoolean stop = new AtomicBoolean(false);
 
