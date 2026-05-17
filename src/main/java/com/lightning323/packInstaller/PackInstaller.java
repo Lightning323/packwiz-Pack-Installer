@@ -172,6 +172,7 @@ public class PackInstaller implements Runnable {
                 System.out.println("\n--- Download Complete ---");
                 fileCleanup.deleteUnIncludedFiles(indexData);
                 System.out.println("\n--- Cleanup Complete ---");
+                System.out.println("Elapsed time: "+(System.currentTimeMillis() - startTime)/1000+"s");
 
                 if (System.currentTimeMillis() - startTime > 2000) {
                     UIUtils.detachedAlert("Modpack download complete!", "Download complete for \"" + config.name + "\"");
