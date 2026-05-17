@@ -20,6 +20,7 @@ import java.nio.file.Paths;
 import java.util.HashSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -124,6 +125,10 @@ public class PackInstaller implements Runnable {
 
 
             if (config.index != null) {
+                Executors.newScheduledThreadPool(1).schedule(() -> {
+                    UIUtils.detachedAlert("Downloading Modpack...", "Your \"" + config.name + "\" pack is being installed...");
+                }, 2000, TimeUnit.MILLISECONDS);
+
                 System.out.println("\n--- Index ---");
                 if (config.index.file == null) throw new IllegalArgumentException("Index file cannot be null");
                 System.out.println("Index File Path: " + config.index.file);
@@ -152,12 +157,6 @@ public class PackInstaller implements Runnable {
                     if (!stop.get()) workerPool.submit(() -> {
                         try {
                             FileDownloader.checkAndDownloadFile(indexURL, saveDir, config.index.hashFormat, entry);
-
-
-                            if (System.currentTimeMillis() - startTime > 2000 && popup.get()) {
-                                popup.set(false);
-                                UIUtils.detachedAlert("Downloading Modpack...", "Your \"" + config.name + "\" pack is being installed...");
-                            }
                         } catch (Exception e) {
                             fail("Failed to download " + entry.file(), e);
 
