@@ -5,8 +5,7 @@ import com.fasterxml.jackson.dataformat.toml.TomlMapper;
 import com.lightning323.packInstaller.fileTypes.FileEntry;
 import com.lightning323.packInstaller.fileTypes.IndexFile;
 import com.lightning323.packInstaller.fileTypes.PackConfig;
-import com.lightning323.packInstaller.utils.IOUtils;
-import com.lightning323.packInstaller.utils.ModDownloader;
+import com.lightning323.packInstaller.utils.FileDownloader;
 import com.lightning323.packInstaller.utils.UIUtils;
 
 import java.io.File;
@@ -49,7 +48,7 @@ public class PackInstaller implements Runnable {
     public static URL PACK_TOML_URL;
 
     @Option(names = {"-s", "--save"}, description = "The output save directory (default: ./)", defaultValue = "./")
-    public static File SAVE_DIR;
+    public static File saveDir;
 
     @Option(names = {"-r", "--reset"}, description = "Do a full cleanup (reset all files)")
     public static boolean FULL_RESET = false;
@@ -89,9 +88,16 @@ public class PackInstaller implements Runnable {
         System.exit(1);
     }
 
+    // Setup Mapper
+    static TomlMapper mapper = new TomlMapper();
+
+    static {
+        mapper.setPropertyNamingStrategy(PropertyNamingStrategies.KEBAB_CASE);
+    }
+
     @Override
     public void run() {
-        if(SKIP_HASH_CHECK){
+        if (SKIP_HASH_CHECK) {
             System.out.println("WARNING: Skipping hash check is not recommended for security reasons. use at your own risk!");
         }
         if (PACK_TOML_URL == null) {
@@ -100,9 +106,6 @@ public class PackInstaller implements Runnable {
             System.exit(1);
         }
 
-        // Setup Mapper
-        TomlMapper mapper = new TomlMapper();
-        mapper.setPropertyNamingStrategy(PropertyNamingStrategies.KEBAB_CASE);
 
         try {
             AtomicBoolean popup = new AtomicBoolean(true);
@@ -121,8 +124,6 @@ public class PackInstaller implements Runnable {
 
 
             if (config.index != null) {
-
-
                 System.out.println("\n--- Index ---");
                 if (config.index.file == null) throw new IllegalArgumentException("Index file cannot be null");
                 System.out.println("Index File Path: " + config.index.file);
@@ -135,19 +136,25 @@ public class PackInstaller implements Runnable {
                 URL indexURL = getRelativeUrl(PACK_TOML_URL, config.index.file);
                 String indexContent = fetchString(indexURL);
                 IndexFile indexData = mapper.readValue(indexContent, IndexFile.class);
-                SAVE_DIR.mkdirs();
-                fileCleanup = new FileCleanup(SAVE_DIR);
-                if (!SAVE_DIR.exists()) {
-                    fail("Failed to create save directory in " + SAVE_DIR.getAbsolutePath());
+                saveDir.mkdirs();
+                if (!saveDir.exists()) {
+                    fail("Failed to create save directory in " + saveDir.getAbsolutePath());
                 }
+
+                fileCleanup = new FileCleanup(saveDir);
+                fileCleanup.calculateModsToSpare(indexURL, indexData);
+
+//                //Download the index file itself
+//                FileDownloading.checkAndDownloadFile(indexURL, saveDir, config.index.hashFormat, new FileEntry(config.index.file, config.index.hash));
+
                 System.out.println("\n\n" +
-                        "--- Downloading to " + SAVE_DIR.getAbsolutePath() + " ---");
+                        "--- Downloading to " + saveDir.getAbsolutePath() + " ---");
                 AtomicBoolean stop = new AtomicBoolean(false);
 
                 for (FileEntry entry : indexData.files) {
                     if (!stop.get()) workerPool.submit(() -> {
                         try {
-                            FileDownloading.checkAndDownloadFile(indexURL, SAVE_DIR, config.index.hashFormat, entry);
+                            FileDownloader.checkAndDownloadFile(indexURL, saveDir, config.index.hashFormat, entry);
 
 
                             if (System.currentTimeMillis() - startTime > 2000 && popup.get()) {

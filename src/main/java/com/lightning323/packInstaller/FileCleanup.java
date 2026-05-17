@@ -3,18 +3,16 @@ package com.lightning323.packInstaller;
 import com.lightning323.packInstaller.fileTypes.FileEntry;
 import com.lightning323.packInstaller.fileTypes.IndexFile;
 import com.lightning323.packInstaller.fileTypes.ModFile;
-import com.lightning323.packInstaller.utils.IOUtils;
-import com.lightning323.packInstaller.utils.ModDownloader;
+import com.lightning323.packInstaller.utils.FileDownloader;
 
 import java.io.*;
 import java.net.URISyntaxException;
-import java.nio.file.Files;
+import java.net.URL;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.HashSet;
 
 import static com.lightning323.packInstaller.PackInstaller.*;
-import static com.lightning323.packInstaller.utils.IOUtils.isInsideOrEqual;
+import static com.lightning323.packInstaller.utils.IOUtils.*;
 import static com.lightning323.packInstaller.utils.ModDownloader.MOD_TOML_FILE_EXT;
 
 public class FileCleanup {
@@ -23,52 +21,77 @@ public class FileCleanup {
      * Each jar that is supposed to be here has a .pw.toml file
      * If a jar was added that does NOT have a .pw.toml file, it will be skipped
      */
-   HashSet<Path> cleanDirectories = new HashSet<>();
-   HashSet<Path> modFiles = new HashSet<>();
-   HashSet<Path> filesThatShouldExist = new HashSet<>();
-   Path baseDir;
+    HashSet<Path> cleanDirectories = new HashSet<>();
+    public HashSet<Path> modFiles = new HashSet<>();
+    HashSet<Path> filesThatShouldExist = new HashSet<>();
+    final HashSet<Path> modsToSpare = new HashSet<>();
+    Path baseDir;
+    File modsCacheFile;
 
-   public FileCleanup(File saveDir){
-       baseDir = saveDir.toPath().toAbsolutePath().normalize();
-   }
-
-    private void saveFilesThatShouldExist(Path savePath) throws IOException {
-        try(BufferedWriter writer = new BufferedWriter(new FileWriter(savePath.toFile()))){
-            writer.write(relativize(savePath).toString()); //Add ourselves
-            for (Path f : filesThatShouldExist) {
-                writer.write(relativize(f).toString());
-            }
-        }
+    public FileCleanup(File saveDir) {
+        baseDir = saveDir.toPath().toAbsolutePath().normalize();
+        modsCacheFile = baseDir.resolve("original_mods.txt").toFile();
     }
 
-    public void readFilesThatShouldExist(Path readPath) throws IOException {
-        try(BufferedReader reader = Files.newBufferedReader(readPath)){
-            reader.lines().forEach(line -> {
-                Path file = Paths.get(line);
-                filesThatShouldExist.add(file.toAbsolutePath().normalize());
-            });
-        }
-    }
-
-    private Path relativize(Path f){
+    private Path relativize(Path f) {
         Path full = f.toAbsolutePath().normalize();
         Path fileRelativePath = baseDir.relativize(full);
         return fileRelativePath;
     }
 
+
+    public void calculateModsToSpare(URL baseUrl, IndexFile indexData) throws Exception {
+        //Calculate mods to spare
+        if (modsCacheFile.exists() && SPARE_ADDED_MODS) {
+            System.out.println("\n--- Calculating mods to spare ---");
+            HashSet<Path> originalMods = new HashSet<>();
+            try (BufferedReader reader = new BufferedReader(new FileReader(modsCacheFile))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    originalMods.add(baseDir.resolve(line));
+                }
+            }
+            HashSet<Path> existingMods = new HashSet<>();
+            for (File f : baseDir.resolve("mods").toFile().listFiles()) {
+                existingMods.add(f.toPath());
+            }
+//            System.out.println(originalMods);
+            //The mods to spare = existing mods - original mods
+            HashSet<Path> excluded = new HashSet<>();
+            excluded.addAll(existingMods);
+            excluded.removeAll(originalMods);
+
+            modsToSpare.clear();
+            for (Path p : excluded) {
+                modsToSpare.add(relativize(p));
+            }
+            System.out.println("Mods to spare: " + modsToSpare.toString());
+        }
+
+        //Write the cache file of original mods from the index.toml we downloaded
+        try (FileWriter writer = new FileWriter(modsCacheFile)) {
+            for (FileEntry entry : indexData.files) {
+                if (entry.file().endsWith(MOD_TOML_FILE_EXT)) {
+                    URL relativeUrl = getRelativeUrl(baseUrl, entry.file());
+                    ModFile modFile = FileDownloader.getModFromPwToml(relativeUrl);
+                    File dir = relativize(baseDir.resolve(entry.file())).toFile().getParentFile();
+                    writer.write(Path.of(dir.getPath(), modFile.filename).toString());
+                    writer.write("\n");
+                }
+            }
+        }
+    }
+
     public void deleteUnIncludedFiles(IndexFile indexData) throws IOException {
         System.out.println("\n--- Deleting Unincluded Files ---");
-
-
-        HashSet<Path> modsToSkip = new HashSet<>();
-
-
 
         //Add the files that should exist so know what files to delete
         for (FileEntry fe : indexData.files) {
             filesThatShouldExist.add(Path.of(fe.file()));
         }
-        modFiles.forEach( (f)->{
+
+        //Write the original mods for future reference and add them to the files that should exist
+        modFiles.forEach((f) -> {
             filesThatShouldExist.add(relativize(f));
         });
 
@@ -110,7 +133,7 @@ public class FileCleanup {
                                     //We can spare files that don't have a toml file because they were likely added manually
                                     System.out.println("Skipping: " + fileRelativePath);
                                     continue;
-                                } else if(modsToSkip.contains(fileRelativePath)){
+                                } else if (modsToSpare.contains(fileRelativePath)) {
                                     //We can spare files that don't have a toml file because they were likely added manually
                                     System.out.println("Skipping mod: " + fileRelativePath);
                                     continue;
@@ -128,11 +151,11 @@ public class FileCleanup {
     }
 
 
-    public  HashSet<Path> getCleanDirectories() {
+    public HashSet<Path> getCleanDirectories() {
         return cleanDirectories;
     }
 
-    public  synchronized void add(File saveDir, Path newPath) {
+    public synchronized void add(File saveDir, Path newPath) {
         Path savePath = saveDir.toPath().toAbsolutePath().normalize();
         Path normalizedNew = newPath.toAbsolutePath().normalize();
         //Dont add base directory as a cleanup directory

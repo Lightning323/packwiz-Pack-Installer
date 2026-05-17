@@ -1,9 +1,9 @@
-package com.lightning323.packInstaller;
+package com.lightning323.packInstaller.utils;
 
+import com.lightning323.packInstaller.PackInstaller;
 import com.lightning323.packInstaller.fileTypes.FileEntry;
 import com.lightning323.packInstaller.fileTypes.ModFile;
-import com.lightning323.packInstaller.utils.HashUtils;
-import com.lightning323.packInstaller.utils.ModDownloader;
+
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -17,7 +17,21 @@ import static com.lightning323.packInstaller.PackInstaller.PATHS_TO_SPARE;
 import static com.lightning323.packInstaller.utils.IOUtils.*;
 import static com.lightning323.packInstaller.utils.ModDownloader.MOD_TOML_FILE_EXT;
 
-public class FileDownloading {
+public class FileDownloader {
+
+    /**
+     * Downloads and returns the entire contents of a URL as a byte array.
+     */
+    public static ModFile getModFromPwToml(URL url) throws IOException {
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        try (ByteArrayOutputStream writer = new ByteArrayOutputStream();
+             var inputStream = conn.getInputStream()) {
+            writer.write(inputStream.readAllBytes());
+            return ModDownloader.getFileEntry(writer.toByteArray());
+        } finally {
+            conn.disconnect();
+        }
+    }
 
     public static void checkAndDownloadFile(URL baseUrl, File baseSaveDir, String hashFormat,
                                             FileEntry entry)

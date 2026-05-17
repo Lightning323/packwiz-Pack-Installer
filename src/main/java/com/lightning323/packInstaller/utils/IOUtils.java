@@ -42,7 +42,6 @@ public class IOUtils {
      * Helper to fetch String content from a URL
      */
     public static String fetchString(URL url) throws Exception {
-
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("GET");
 
