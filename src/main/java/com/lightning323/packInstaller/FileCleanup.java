@@ -53,6 +53,7 @@ public class FileCleanup {
     public boolean calculateModsToSpare(URL baseUrl, IndexFile indexData, String hashFormat, String hash) throws Exception {
         //Calculate mods to spare
         if (modsCacheFile.exists()) {
+            System.out.println("\n--- Cache File ---");
             HashSet<Path> originalMods = new HashSet<>();
             String originalHashFormat = null;
             String originalHash = null;
