@@ -4,6 +4,7 @@ import com.lightning323.packInstaller.fileTypes.FileEntry;
 import com.lightning323.packInstaller.fileTypes.IndexFile;
 import com.lightning323.packInstaller.fileTypes.ModFile;
 import com.lightning323.packInstaller.utils.FileDownloader;
+import com.lightning323.packInstaller.utils.HashUtils;
 
 import java.io.*;
 import java.net.URISyntaxException;
@@ -30,7 +31,7 @@ public class FileCleanup {
 
     public FileCleanup(File saveDir) {
         baseDir = saveDir.toPath().toAbsolutePath().normalize();
-        modsCacheFile = baseDir.resolve("original_mods.txt").toFile();
+        modsCacheFile = baseDir.resolve("cache.txt").toFile();
     }
 
     private Path relativize(Path f) {
@@ -39,18 +40,44 @@ public class FileCleanup {
         return fileRelativePath;
     }
 
-
-    public void calculateModsToSpare(URL baseUrl, IndexFile indexData) throws Exception {
+    /**
+     *
+     * @param baseUrl
+     * @param indexData
+     * @param hashFormat
+     * @param hash
+     * @return if we need to update the pack
+     * @throws Exception
+     */
+    public boolean calculateModsToSpare(URL baseUrl, IndexFile indexData, String hashFormat, String hash) throws Exception {
         //Calculate mods to spare
         if (modsCacheFile.exists() && SPARE_ADDED_MODS) {
             System.out.println("\n\n--- Calculating mods to spare ---");
             HashSet<Path> originalMods = new HashSet<>();
+            int lineIndex = 0;
+            String originalHashFormat = null;
+            String originalHash = null;
             try (BufferedReader reader = new BufferedReader(new FileReader(modsCacheFile))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
+                    //The first 2 lines of the cache file are declarations of the hash format and hash
+                    if (lineIndex == 0) {
+                        originalHashFormat = line;
+                    } else if (lineIndex == 1) {
+                        originalHash = line;
+                    }
                     originalMods.add(baseDir.resolve(line));
+                    lineIndex++;
                 }
             }
+
+            if (originalHashFormat != null && originalHash != null
+                    && originalHashFormat.equals(hashFormat)
+                    && originalHash.equals(hash)) {
+                System.out.println("Hashes are the same, no need to update.");
+                return false;
+            }
+
             HashSet<Path> existingMods = new HashSet<>();
             for (File f : baseDir.resolve("mods").toFile().listFiles()) {
                 existingMods.add(f.toPath());
@@ -70,19 +97,26 @@ public class FileCleanup {
 
         //Write the cache file of original mods from the index.toml we downloaded
         try (FileWriter writer = new FileWriter(modsCacheFile)) {
+            //Write the hash of the index file
+            writer.write(hashFormat);
+            writer.write("\n");
+            writer.write(hash);
+            writer.write("\n");
+            //Write the existing mods
             for (FileEntry entry : indexData.files) {
                 if (entry.file().endsWith(MOD_TOML_FILE_EXT)) { //If the file ends with.pw.toml, we add it to the cache
                     File dir = relativize(baseDir.resolve(entry.file())).toFile().getParentFile();
                     ModFile modFile = FileDownloader.getModFromPwToml(getRelativeUrl(baseUrl, entry.file()));
                     writer.write(Path.of(dir.getPath(), modFile.filename).toString());
                     writer.write("\n");
-                }else if(entry.file().endsWith(".jar")){//If the file is a jar, we add it to the cache
+                } else if (entry.file().endsWith(".jar")) {//If the file is a jar, we add it to the cache
                     File dir = relativize(baseDir.resolve(entry.file())).toFile().getParentFile();
                     writer.write(Path.of(dir.getPath(), entry.file()).toString());
                     writer.write("\n");
                 }
             }
         }
+        return true;
     }
 
     public void deleteUnIncludedFiles(IndexFile indexData) throws IOException {
