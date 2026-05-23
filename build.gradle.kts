@@ -46,7 +46,7 @@ tasks.register<Jar>("wrapperJar") {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 
     manifest {
-        attributes["Main-Class"] = "com.lightning323.packInstaller.wrapper.ModpackRuntimeWrapper"
+        attributes["Main-Class"] = "com.lightning323.packInstaller.wrapper.ModpackPostExitTracker"
     }
 
     // 1. Include the wrapper's own compiled classes
