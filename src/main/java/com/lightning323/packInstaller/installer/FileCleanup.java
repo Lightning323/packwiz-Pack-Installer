@@ -8,7 +8,9 @@ import com.lightning323.packInstaller.installer.utils.FileDownloader;
 import java.io.*;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.HashSet;
 
 import static com.lightning323.packInstaller.installer.PackInstaller.*;
@@ -30,7 +32,7 @@ public class FileCleanup {
 
     public FileCleanup(File saveDir) {
         baseDir = saveDir.toPath().toAbsolutePath().normalize();
-        modsCacheFile = baseDir.resolve("original_mods.txt").toFile();
+        modsCacheFile = baseDir.resolve("cache.txt").toFile();
     }
 
     private Path relativize(Path f) {
@@ -39,49 +41,123 @@ public class FileCleanup {
         return fileRelativePath;
     }
 
-
-    public void calculateModsToSpare(URL baseUrl, IndexFile indexData) throws Exception {
+    /**
+     *
+     * @param baseUrl
+     * @param indexData
+     * @param hashFormat
+     * @param hash
+     * @return if we need to update the pack
+     * @throws Exception
+     */
+    public boolean calculateModsToSpare(URL baseUrl, IndexFile indexData, String hashFormat, String hash) throws Exception {
         //Calculate mods to spare
-        if (modsCacheFile.exists() && SPARE_ADDED_MODS) {
-            System.out.println("\n\n--- Calculating mods to spare ---");
+        if (modsCacheFile.exists()) {
+            System.out.println("\n--- Cache File ---");
             HashSet<Path> originalMods = new HashSet<>();
+            String originalHashFormat = null;
+            String originalHash = null;
+
             try (BufferedReader reader = new BufferedReader(new FileReader(modsCacheFile))) {
+                int lineIndex = 0;
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    originalMods.add(baseDir.resolve(line));
+                    if (line.isBlank()) continue;
+                    //The first 2 lines of the cache file are declarations of the hash format and hash
+                    if (lineIndex == 0) {
+                        originalHashFormat = line;
+                    } else if (lineIndex == 1) {
+                        originalHash = line;
+                    } else {
+                        if (SPARE_ADDED_MODS) originalMods.add(baseDir.resolve(line));
+                        else break;
+                    }
+                    lineIndex++;
                 }
             }
-            HashSet<Path> existingMods = new HashSet<>();
-            for (File f : baseDir.resolve("mods").toFile().listFiles()) {
-                existingMods.add(f.toPath());
-            }
-//            System.out.println(originalMods);
-            //The mods to spare = existing mods - original mods
-            HashSet<Path> excluded = new HashSet<>();
-            excluded.addAll(existingMods);
-            excluded.removeAll(originalMods);
+            System.out.println("Current Hash Format: " + originalHashFormat);
+            System.out.println("Current Hash: " + originalHash);
 
-            modsToSpare.clear();
-            for (Path p : excluded) {
-                modsToSpare.add(relativize(p));
+
+            if (originalHashFormat != null && originalHash != null
+                    && originalHashFormat.equals(hashFormat)
+                    && originalHash.equals(hash)) {
+                System.out.println("Hashes are the same, no need to update.");
+                return false;
             }
-            System.out.println("Mods to spare: " + modsToSpare.toString());
+
+            if (SPARE_ADDED_MODS) {
+                System.out.println("\n\n--- Calculating mods to spare ---");
+                HashSet<Path> existingMods = new HashSet<>();
+                for (File f : baseDir.resolve("mods").toFile().listFiles()) {
+                    existingMods.add(f.toPath());
+                }
+//            System.out.println(originalMods);
+                //The mods to spare = existing mods - original mods
+                HashSet<Path> excluded = new HashSet<>();
+                excluded.addAll(existingMods);
+                excluded.removeAll(originalMods);
+                modsToSpare.clear();
+                for (Path p : excluded) {
+                    modsToSpare.add(relativize(p));
+                }
+                System.out.println("Mods to spare: " + modsToSpare.toString());
+            }
         }
 
         //Write the cache file of original mods from the index.toml we downloaded
-        try (FileWriter writer = new FileWriter(modsCacheFile)) {
+        writeCacheFile(baseUrl, indexData, hashFormat, hash);
+        return true;
+    }
+
+    public boolean writeCacheFile(URL baseUrl, IndexFile indexData, String hashFormat, String hash) {
+        // 1. Define paths for the actual target and a sibling temp file
+        Path targetPath = modsCacheFile.toPath();
+        Path tempPath = targetPath.resolveSibling(targetPath.getFileName() + ".tmp");
+
+        // 2. Open the writer on the TEMPORARY file
+        try (BufferedWriter writer = Files.newBufferedWriter(tempPath)) {
+            // Write the hash of the index file
+            writer.write(hashFormat);
+            writer.newLine();
+            writer.write(hash);
+            writer.newLine();
+
+            // Write the existing mods
             for (FileEntry entry : indexData.files) {
-                if (entry.file().endsWith(MOD_TOML_FILE_EXT)) { //If the file ends with.pw.toml, we add it to the cache
+                if (entry.file().endsWith(MOD_TOML_FILE_EXT)) {
                     File dir = relativize(baseDir.resolve(entry.file())).toFile().getParentFile();
                     ModFile modFile = FileDownloader.getModFromPwToml(getRelativeUrl(baseUrl, entry.file()));
                     writer.write(Path.of(dir.getPath(), modFile.filename).toString());
-                    writer.write("\n");
-                }else if(entry.file().endsWith(".jar")){//If the file is a jar, we add it to the cache
+                    writer.newLine();
+                } else if (entry.file().endsWith(".jar")) {
                     File dir = relativize(baseDir.resolve(entry.file())).toFile().getParentFile();
                     writer.write(Path.of(dir.getPath(), entry.file()).toString());
-                    writer.write("\n");
+                    writer.newLine();
                 }
             }
+
+            // Close the writer explicitly before moving (handled automatically by try-with-resources)
+        } catch (IOException | URISyntaxException e) {
+            // If writing failed, clean up the temp file so we don't leave garbage behind
+            try {
+                Files.deleteIfExists(tempPath);
+            } catch (IOException ignored) {
+            }
+            return false;
+        }
+
+        // 3. Move the temp file to the target location atomically
+        try {
+            Files.move(tempPath, targetPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            return true;
+        } catch (IOException e) {
+            // If the atomic move failed, try to clean up the temp file
+            try {
+                Files.deleteIfExists(tempPath);
+            } catch (IOException ignored) {
+            }
+            return false;
         }
     }
 
