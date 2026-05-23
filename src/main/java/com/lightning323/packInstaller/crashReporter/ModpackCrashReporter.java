@@ -1,4 +1,4 @@
-package com.lightning323.packInstaller.wrapper;
+package com.lightning323.packInstaller.crashReporter;
 
 import java.io.*;
 import java.net.HttpURLConnection;
@@ -8,14 +8,14 @@ import java.time.Instant;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class ModpackPostExitTracker {
+public class ModpackCrashReporter {
 
     public static void main(String[] args) {
         // 1. Capture variables from the system environment passed by Prism
         String minecraftDirPath = System.getenv("INST_MC_DIR");
         File mcDir = minecraftDirPath != null ? new File(minecraftDirPath) : new File(".");
 
-        WrapperConfig CONFIG = WrapperConfig.loadOrCreateConfig(mcDir);
+        ReporterConfig CONFIG = ReporterConfig.loadOrCreateConfig(mcDir);
 
         String instanceName = System.getenv("INST_NAME");
         if (instanceName == null) instanceName = "Minecraft Instance";

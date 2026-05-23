@@ -1,20 +1,19 @@
-package com.lightning323.packInstaller.wrapper;
+package com.lightning323.packInstaller.crashReporter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 
 import java.io.File;
-import java.nio.charset.StandardCharsets;
 
-public class WrapperConfig {
+public class ReporterConfig {
     // Default values if a new file needs to be generated
     public String webhookUrl = "YOUR_DISCORD_WEBHOOK_URL_HERE";
     public boolean allowUsernames = false;
 
-    public WrapperConfig() {
+    public ReporterConfig() {
     }
 
-    public static WrapperConfig loadOrCreateConfig(File mcDir) {
+    public static ReporterConfig loadOrCreateConfig(File mcDir) {
         File configFile = new File(mcDir, "wrapper_config.json");
 
         // Set up ObjectMapper with clean pretty-printing for generated configs
@@ -24,7 +23,7 @@ public class WrapperConfig {
         // 1. If the config doesn't exist, create a default template
         if (!configFile.exists()) {
             System.out.println("[Wrapper] config.json not found. Generating template...");
-            WrapperConfig defaultConfig = new WrapperConfig();
+            ReporterConfig defaultConfig = new ReporterConfig();
 
             try {
                 mapper.writeValue(configFile, defaultConfig);
@@ -37,17 +36,17 @@ public class WrapperConfig {
 
         // 2. If it does exist, map it directly to our configuration object
         try {
-            WrapperConfig config = mapper.readValue(configFile, WrapperConfig.class);
+            ReporterConfig config = mapper.readValue(configFile, ReporterConfig.class);
 
             // Defensive check if the file was empty
             if (config == null) {
-                return new WrapperConfig();
+                return new ReporterConfig();
             }
 
             return config;
         } catch (Exception e) {
             System.err.println("[Wrapper] Error reading config.json with Jackson: " + e.getMessage());
-            return new WrapperConfig(); // Safe fallback to defaults if users corrupt the JSON syntax
+            return new ReporterConfig(); // Safe fallback to defaults if users corrupt the JSON syntax
         }
     }
 }
