@@ -5,13 +5,17 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class ModpackCrashReporter {
 
     public static void main(String[] args) {
-        // 1. Capture variables from the system environment passed by Prism
         String minecraftDirPath = System.getenv("INST_MC_DIR");
         File mcDir = minecraftDirPath != null ? new File(minecraftDirPath) : new File(".");
 
@@ -20,14 +24,11 @@ public class ModpackCrashReporter {
         String instanceName = System.getenv("INST_NAME");
         if (instanceName == null) instanceName = "Minecraft Instance";
 
-
-        // 2. Extract the exit code from Prism's arguments
-        // Post-exit commands append arguments manually or dynamically via tracking tokens
-        int exitCode = -1;
+        int parsedExitCode = -1;
         if (args.length > 0) {
             try {
-                exitCode = Integer.parseInt(args[0]);
-                System.out.println("[Post-Exit] Received Minecraft exit code: " + exitCode);
+                parsedExitCode = Integer.parseInt(args[0]);
+                System.out.println("[Post-Exit] Received Minecraft exit code: " + parsedExitCode);
             } catch (NumberFormatException e) {
                 System.err.println("[Post-Exit] Failed to parse exit code from argument: " + args[0]);
             }
@@ -35,37 +36,58 @@ public class ModpackCrashReporter {
             System.err.println("[Post-Exit] Warning: No exit code parameter passed by launcher arguments.");
         }
 
-        // 3. Process logs now that the game has completely stopped
-        String logURL = "No log file could be found or read.";
-        String crashURL = null;
+        // Capture effectively final copy for thread access
+        final int exitCode = parsedExitCode;
+
+        AtomicReference<String> logURL = new AtomicReference<>("No log file could be found or read.");
+        AtomicReference<String> crashURL = new AtomicReference<>(null);
+        AtomicReference<String> playerUsername = new AtomicReference<>(null);
 
         File logFile = getLatestLog(mcDir);
 
         if (logFile != null && logFile.exists()) {
-            System.out.println("[Post-Exit] Found log file: " + logFile.getName() + ". Uploading to mclo.gs...");
-            logURL = uploadToMcLogs(logFile);
 
-            // Locate and upload the crash report if one was generated
-            File crashFile = findCrashReportFromLog(logFile);
-            if (crashFile != null && crashFile.exists()) {
-                System.out.println("[Post-Exit] Found crash file: " + crashFile.getName() + ". Uploading to mclo.gs...");
-                crashURL = uploadToMcLogs(crashFile);
+            // Thread 1: Log Upload
+            Thread logUploadThread = new Thread(() -> {
+                logURL.set(uploadToMcLogs(logFile));
+            });
+
+            // Thread 2: Username Scraper
+            Thread usernameThread = new Thread(() -> {
+                if (CONFIG.allowUsernames) {
+                    playerUsername.set(parseUsernameFromLog(logFile));
+                }
+            });
+
+            // Thread 3: Crash Report Finder & Uploader
+            Thread crashUploadThread = new Thread(() -> {
+                File crashFile = findCrashReportFromLog(logFile);
+                if (crashFile != null && crashFile.exists()) {
+                    System.out.println("[Post-Exit] Found crash file: " + crashFile.getName() + ". Uploading...");
+                    crashURL.set(uploadToMcLogs(crashFile));
+                }
+            });
+
+            // Start all processes concurrently
+            logUploadThread.start();
+            usernameThread.start();
+            crashUploadThread.start();
+
+            try {
+                // Block main timeline until ALL background work has stabilized completely
+                logUploadThread.join();
+                usernameThread.join();
+                crashUploadThread.join();
+            } catch (InterruptedException e) {
+                System.err.println("[Main] Interrupted while waiting for uploads to finalize.");
+                Thread.currentThread().interrupt();
             }
         }
 
-
-        //Get the player username to identify who started the instance
-        String playerUsername = null;
-        if (CONFIG.allowUsernames) {
-            playerUsername = System.getenv("INST_MC_USER");
-            if (playerUsername == null || playerUsername.isBlank()) {
-                playerUsername = parseUsernameFromLog(logFile);
-            }
-        }
-
-        // 4. Dispatch final Discord notice payload
-        sendDiscordWebhook(CONFIG.webhookUrl, playerUsername, instanceName, exitCode, logURL, crashURL);
+        // 4. Dispatch final Discord notice payload securely
+        sendDiscordWebhook(CONFIG.webhookUrl, playerUsername.get(), instanceName, exitCode, logURL.get(), crashURL.get());
     }
+
 
     private static String parseUsernameFromLog(File latestLog) {
         if (latestLog == null || !latestLog.exists() || !latestLog.canRead()) {
@@ -166,7 +188,7 @@ public class ModpackCrashReporter {
 
     private static void sendDiscordWebhook(String webhookURL, String playerName, String instanceName, int exitCode, String mclogsUrl, String crashLogUrl) {
         try {
-            int color = (exitCode == 0) ? 65280 : 16711680;
+            int color = (crashLogUrl != null || exitCode != 0) ? 65280 : 16711680;
             String timestamp = Instant.now().toString();
 
             // Handle invalid/broken JSON syntax blocks dynamically if fields resolve to null
@@ -181,7 +203,7 @@ public class ModpackCrashReporter {
                     + "  \"fields\": ["
                     + escapedUsernameLine
                     + "    { \"name\": \"Instance\", \"value\": \"" + instanceName + "\", \"inline\": true },"
-                    + "    { \"name\": \"Exit Code\", \"value\": \"`" + exitCode + "`\", \"inline\": true },"
+                    + (exitCode == -1 ? "" : "    { \"name\": \"Exit Code\", \"value\": \"`" + exitCode + "`\", \"inline\": true },")
                     + "    { \"name\": \"Latest log\", \"value\": \"" + mclogsUrl + "\", \"inline\": false },"
                     + (crashLogUrl == null ? "" : "    { \"name\": \"Crash log\", \"value\": \"" + crashLogUrl + "\", \"inline\": false }")
                     + "  ],"
