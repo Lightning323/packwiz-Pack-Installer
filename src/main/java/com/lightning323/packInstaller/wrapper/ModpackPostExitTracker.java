@@ -20,7 +20,6 @@ public class ModpackPostExitTracker {
         String instanceName = System.getenv("INST_NAME");
         if (instanceName == null) instanceName = "Minecraft Instance";
 
-        String playerUsername = System.getenv("INST_MC_USER");
 
         // 2. Extract the exit code from Prism's arguments
         // Post-exit commands append arguments manually or dynamically via tracking tokens
@@ -54,8 +53,41 @@ public class ModpackPostExitTracker {
             }
         }
 
+
+        //Get the player username to identify who started the instance
+        String playerUsername = null;
+        if (CONFIG.allowUsernames) {
+            playerUsername = System.getenv("INST_MC_USER");
+            if (playerUsername == null || playerUsername.isBlank()) {
+                playerUsername = parseUsernameFromLog(logFile);
+            }
+        }
+
         // 4. Dispatch final Discord notice payload
         sendDiscordWebhook(CONFIG.webhookUrl, playerUsername, instanceName, exitCode, logURL, crashURL);
+    }
+
+    private static String parseUsernameFromLog(File latestLog) {
+        if (latestLog == null || !latestLog.exists() || !latestLog.canRead()) {
+            return "Unknown Player";
+        }
+
+        // Capture the username between "Logged in as " and " with uuid"
+        Pattern userPattern = Pattern.compile("Logged in as\\s+([^\\s]+)\\s+with\\s+uuid");
+
+        try (BufferedReader reader = new BufferedReader(new FileReader(latestLog, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                Matcher matcher = userPattern.matcher(line);
+                if (matcher.find()) {
+                    return matcher.group(1).trim(); // Returns the exact gamertag
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("[Post-Exit] Error parsing gamertag from log: " + e.getMessage());
+        }
+
+        return "Unknown Player"; // Fallback if parsing fails or user is playing offline mode
     }
 
     private static File findCrashReportFromLog(File latestLog) {

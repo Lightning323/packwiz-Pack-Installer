@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 public class WrapperConfig {
     // Default values if a new file needs to be generated
     public String webhookUrl = "YOUR_DISCORD_WEBHOOK_URL_HERE";
+    public boolean allowUsernames = false;
 
     public WrapperConfig() {
     }
