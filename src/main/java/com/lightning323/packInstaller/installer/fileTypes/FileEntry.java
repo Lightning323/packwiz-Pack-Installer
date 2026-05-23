@@ -1,7 +1,6 @@
-package com.lightning323.packInstaller.fileTypes;
+package com.lightning323.packInstaller.installer.fileTypes;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonProperty;
 
 @JsonIgnoreProperties(ignoreUnknown = true) // <--- Add this line!
 public record FileEntry(

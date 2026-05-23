@@ -1,18 +1,12 @@
-package com.lightning323.packInstaller.utils;
-
-import com.lightning323.packInstaller.FileCleanup;
-import com.lightning323.packInstaller.PackInstaller;
-import com.lightning323.packInstaller.fileTypes.FileEntry;
+package com.lightning323.packInstaller.installer.utils;
 
 import java.io.*;
 import java.net.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.stream.Collectors;
 
-import static com.lightning323.packInstaller.PackInstaller.PATHS_TO_SPARE;
-import static com.lightning323.packInstaller.PackInstaller.SKIP_HASH_CHECK;
+import static com.lightning323.packInstaller.installer.PackInstaller.SKIP_HASH_CHECK;
 
 public class IOUtils {
 

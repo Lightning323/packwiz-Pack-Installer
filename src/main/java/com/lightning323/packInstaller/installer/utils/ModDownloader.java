@@ -1,8 +1,7 @@
-package com.lightning323.packInstaller.utils;
+package com.lightning323.packInstaller.installer.utils;
 
 import com.fasterxml.jackson.dataformat.toml.TomlMapper;
-import com.lightning323.packInstaller.fileTypes.FileEntry;
-import com.lightning323.packInstaller.fileTypes.ModFile;
+import com.lightning323.packInstaller.installer.fileTypes.ModFile;
 
 import java.io.*;
 import java.net.HttpURLConnection;

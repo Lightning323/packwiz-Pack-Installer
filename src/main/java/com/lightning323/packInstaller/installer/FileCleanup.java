@@ -1,9 +1,9 @@
-package com.lightning323.packInstaller;
+package com.lightning323.packInstaller.installer;
 
-import com.lightning323.packInstaller.fileTypes.FileEntry;
-import com.lightning323.packInstaller.fileTypes.IndexFile;
-import com.lightning323.packInstaller.fileTypes.ModFile;
-import com.lightning323.packInstaller.utils.FileDownloader;
+import com.lightning323.packInstaller.installer.fileTypes.FileEntry;
+import com.lightning323.packInstaller.installer.fileTypes.IndexFile;
+import com.lightning323.packInstaller.installer.fileTypes.ModFile;
+import com.lightning323.packInstaller.installer.utils.FileDownloader;
 
 import java.io.*;
 import java.net.URISyntaxException;
@@ -11,9 +11,9 @@ import java.net.URL;
 import java.nio.file.Path;
 import java.util.HashSet;
 
-import static com.lightning323.packInstaller.PackInstaller.*;
-import static com.lightning323.packInstaller.utils.IOUtils.*;
-import static com.lightning323.packInstaller.utils.ModDownloader.MOD_TOML_FILE_EXT;
+import static com.lightning323.packInstaller.installer.PackInstaller.*;
+import static com.lightning323.packInstaller.installer.utils.IOUtils.*;
+import static com.lightning323.packInstaller.installer.utils.ModDownloader.MOD_TOML_FILE_EXT;
 
 public class FileCleanup {
     /**

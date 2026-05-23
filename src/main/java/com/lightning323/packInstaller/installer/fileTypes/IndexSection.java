@@ -1,4 +1,4 @@
-package com.lightning323.packInstaller.fileTypes;
+package com.lightning323.packInstaller.installer.fileTypes;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 

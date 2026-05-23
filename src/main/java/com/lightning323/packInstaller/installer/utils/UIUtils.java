@@ -1,4 +1,4 @@
-package com.lightning323.packInstaller.utils;
+package com.lightning323.packInstaller.installer.utils;
 
 import java.awt.*;
 import java.awt.TrayIcon.MessageType;

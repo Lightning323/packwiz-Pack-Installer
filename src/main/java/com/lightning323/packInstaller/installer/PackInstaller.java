@@ -1,12 +1,12 @@
-package com.lightning323.packInstaller;
+package com.lightning323.packInstaller.installer;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.dataformat.toml.TomlMapper;
-import com.lightning323.packInstaller.fileTypes.FileEntry;
-import com.lightning323.packInstaller.fileTypes.IndexFile;
-import com.lightning323.packInstaller.fileTypes.PackConfig;
-import com.lightning323.packInstaller.utils.FileDownloader;
-import com.lightning323.packInstaller.utils.UIUtils;
+import com.lightning323.packInstaller.installer.fileTypes.FileEntry;
+import com.lightning323.packInstaller.installer.fileTypes.IndexFile;
+import com.lightning323.packInstaller.installer.fileTypes.PackConfig;
+import com.lightning323.packInstaller.installer.utils.FileDownloader;
+import com.lightning323.packInstaller.installer.utils.UIUtils;
 
 import java.io.File;
 
@@ -20,12 +20,11 @@ import java.nio.file.Paths;
 import java.util.HashSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static com.lightning323.packInstaller.utils.IOUtils.fetchString;
-import static com.lightning323.packInstaller.utils.IOUtils.getRelativeUrl;
+import static com.lightning323.packInstaller.installer.utils.IOUtils.fetchString;
+import static com.lightning323.packInstaller.installer.utils.IOUtils.getRelativeUrl;
 
 @Command(
         name = "packwiz pack installer",

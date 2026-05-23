@@ -32,14 +32,45 @@ tasks.withType<Jar> {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 
     manifest {
-        attributes["Main-Class"] = "com.lightning323.packInstaller.PackInstaller"
+        attributes["Main-Class"] = "com.lightning323.packInstaller.installer.PackInstaller"
     }
 
     // Manually grab every dependency and shove it into the JAR
     from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
 }
+// Create a brand new task specifically for the cross-platform wrapper
+tasks.register<Jar>("wrapperJar") {
+    group = "build"
+    description = "Assembles a lightweight cross-platform wrapper jar for Prism Launcher."
+    archiveFileName.set("wrapper.jar")
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    manifest {
+        attributes["Main-Class"] = "com.lightning323.packInstaller.wrapper.ModpackRuntimeWrapper"
+    }
+
+    // 1. Include the wrapper's own compiled classes
+    from(sourceSets.main.get().output) {
+        include("com/lightning323/packInstaller/wrapper/**")
+    }
+
+    // 2. Unpack and include ONLY Jackson dependencies into this JAR
+    from(configurations.runtimeClasspath.get().map { file ->
+        if (file.name.contains("jackson-core") || file.name.contains("jackson-databind") || file.name.contains("jackson-annotations")) {
+            if (file.isDirectory) file else zipTree(file)
+        } else {
+            files() // Skip everything else
+        }
+    })
+}
+
+// Optional: Force the 'build' task to output BOTH jars automatically
+tasks.build {
+    dependsOn(tasks.named("wrapperJar"))
+}
+
 application {
-    mainClass.set("com.lightning323.packInstaller.PackInstaller")
+    mainClass.set("com.lightning323.packInstaller.installer.PackInstaller")
 }
 
 sourceSets {

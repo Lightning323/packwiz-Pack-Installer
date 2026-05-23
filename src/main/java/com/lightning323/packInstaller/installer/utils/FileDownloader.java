@@ -1,8 +1,8 @@
-package com.lightning323.packInstaller.utils;
+package com.lightning323.packInstaller.installer.utils;
 
-import com.lightning323.packInstaller.PackInstaller;
-import com.lightning323.packInstaller.fileTypes.FileEntry;
-import com.lightning323.packInstaller.fileTypes.ModFile;
+import com.lightning323.packInstaller.installer.PackInstaller;
+import com.lightning323.packInstaller.installer.fileTypes.FileEntry;
+import com.lightning323.packInstaller.installer.fileTypes.ModFile;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -13,9 +13,9 @@ import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import static com.lightning323.packInstaller.PackInstaller.PATHS_TO_SPARE;
-import static com.lightning323.packInstaller.utils.IOUtils.*;
-import static com.lightning323.packInstaller.utils.ModDownloader.MOD_TOML_FILE_EXT;
+import static com.lightning323.packInstaller.installer.PackInstaller.PATHS_TO_SPARE;
+import static com.lightning323.packInstaller.installer.utils.IOUtils.*;
+import static com.lightning323.packInstaller.installer.utils.ModDownloader.MOD_TOML_FILE_EXT;
 
 public class FileDownloader {
 

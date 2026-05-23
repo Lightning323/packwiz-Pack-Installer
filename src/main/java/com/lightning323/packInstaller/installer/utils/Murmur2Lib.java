@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.lightning323.packInstaller.utils;
+package com.lightning323.packInstaller.installer.utils;
 
 /**
  * Murmur2 32 and 64 bit variants.
