@@ -4,20 +4,25 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.dataformat.toml.TomlMapper;
 import com.lightning323.packInstaller.installer.fileTypes.FileEntry;
 import com.lightning323.packInstaller.installer.fileTypes.IndexFile;
+import com.lightning323.packInstaller.installer.fileTypes.ModFile;
 import com.lightning323.packInstaller.installer.fileTypes.PackConfig;
 import com.lightning323.packInstaller.installer.utils.FileDownloader;
+import com.lightning323.packInstaller.installer.utils.IOUtils;
 import com.lightning323.packInstaller.installer.utils.UIUtils;
 
-import java.io.File;
+import java.io.*;
 
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -25,6 +30,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.lightning323.packInstaller.installer.utils.IOUtils.fetchString;
 import static com.lightning323.packInstaller.installer.utils.IOUtils.getRelativeUrl;
+import static com.lightning323.packInstaller.installer.utils.ModDownloader.MOD_TOML_FILE_EXT;
 
 @Command(
         name = "packwiz pack installer",
@@ -43,7 +49,7 @@ import static com.lightning323.packInstaller.installer.utils.IOUtils.getRelative
 )
 public class PackInstaller implements Runnable {
 
-
+    //Parameters
     @Option(names = {"-u", "--url"}, description = "URL to the packwiz pack.toml file")
     public static URL PACK_TOML_URL;
 
@@ -65,12 +71,27 @@ public class PackInstaller implements Runnable {
             split = ","
     )
     public static HashSet<Path> PATHS_TO_SPARE = new HashSet<>();
-    public static FileCleanup fileCleanup;
 
     static {
         PATHS_TO_SPARE.add(Paths.get("options.txt"));
         PATHS_TO_SPARE.add(Paths.get("servers.dat"));
     }
+
+    @Option(
+            names = {"--spare-cleanup"},
+            description = "Files/directories to prevent deletion",
+            split = ","
+    )
+    public static HashSet<Path> PATHS_TO_SPARE_CLEANUP = new HashSet<>();
+
+    static {
+        PATHS_TO_SPARE.add(Paths.get("/config"));
+    }
+    //-----------------------------------------------------------------------------------------------------
+    //-----------------------------------------------------------------------------------------------------
+    //-----------------------------------------------------------------------------------------------------
+
+    public static FileCleanup fileCleanup;
 
     private static void fail(String message) {
         System.err.println("\nFAIL:\n" + message.toUpperCase());
@@ -95,6 +116,10 @@ public class PackInstaller implements Runnable {
         mapper.setPropertyNamingStrategy(PropertyNamingStrategies.KEBAB_CASE);
     }
 
+
+    public final static HashSet<Path> modsToSpare = new HashSet<>();
+
+
     @Override
     public void run() {
         if (SKIP_HASH_CHECK) {
@@ -106,9 +131,7 @@ public class PackInstaller implements Runnable {
             System.exit(1);
         }
 
-
         try {
-            AtomicBoolean popup = new AtomicBoolean(true);
             long startTime = System.currentTimeMillis();
             System.out.println("Fetching pack configuration...");
             String packContent = fetchString(PACK_TOML_URL);
@@ -122,7 +145,7 @@ public class PackInstaller implements Runnable {
                 System.out.println("Minecraft Version: " + config.versions.get("minecraft"));
             }
 
-
+            //Index
             if (config.index != null) {
                 Executors.newScheduledThreadPool(1).schedule(() -> {
                     UIUtils.detachedAlert("Downloading Modpack...", "Your \"" + config.name + "\" pack is being installed...");
@@ -141,13 +164,57 @@ public class PackInstaller implements Runnable {
                 String indexContent = fetchString(indexURL);
                 IndexFile indexData = mapper.readValue(indexContent, IndexFile.class);
                 saveDir.mkdirs();
+                Path savePath = saveDir.toPath();
                 if (!saveDir.exists()) {
                     fail("Failed to create save directory in " + saveDir.getAbsolutePath());
                 }
 
                 fileCleanup = new FileCleanup(saveDir);
-                boolean shouldUpdate = fileCleanup.calculateModsToSpare(indexURL, indexData, config.index.hashFormat, config.index.hash);
-                if (!shouldUpdate) return;
+                //Read cache file
+                CacheFile r = new CacheFile(savePath);
+                r.read();
+
+                if (r.indexHashFormat != null && r.indexHash != null
+                        && r.indexHashFormat.equals(config.index.hashFormat)
+                        && r.indexHash.equals(config.index.hash)) {
+                    System.out.println("Hashes are the same, no need to update.");
+                    return;
+                }
+
+                if (SPARE_ADDED_MODS) {
+                    System.out.println("\n\n--- Calculating mods to spare ---");
+                    HashSet<Path> existingMods = new HashSet<>();
+                    for (File f : savePath.resolve("mods").toFile().listFiles()) {
+                        existingMods.add(f.toPath());
+                    }
+                    HashSet<Path> excluded = new HashSet<>();
+                    excluded.addAll(existingMods);
+                    excluded.removeAll(r.modFiles);
+                    modsToSpare.clear();
+                    for (Path p : excluded) {
+                        modsToSpare.add(savePath.relativize(p.toAbsolutePath().normalize()));
+                    }
+                    System.out.println("Mods to spare: " + modsToSpare.toString());
+                }
+
+                List<Path> modFiles = new ArrayList<>();
+
+                //Index mods from index.toml
+                for (FileEntry entry : indexData.files) {
+                    if (entry.file().endsWith(MOD_TOML_FILE_EXT)) {
+                        try {
+                            File dir = savePath.relativize(savePath.resolve(entry.file())).toFile().getParentFile();
+                            ModFile modFile = FileDownloader.getModFromPwToml(IOUtils.getRelativeUrl(indexURL, entry.file()));
+                            modFiles.add(Path.of(dir.getPath(), modFile.filename));
+                        } catch (IOException | URISyntaxException e) {
+                            System.out.println("Failed to get mod from pw toml: " + entry.file());
+                        }
+                    } else if (entry.file().endsWith(".jar")) {
+                        File dir = savePath.relativize(savePath.resolve(entry.file())).toFile().getParentFile();
+                        modFiles.add(Path.of(dir.getPath(), entry.file()));
+                    }
+                }
+
 
                 System.out.println("\n" +
                         "--- Downloading to " + saveDir.getAbsolutePath() + " ---");
@@ -170,23 +237,27 @@ public class PackInstaller implements Runnable {
                     workerPool.shutdownNow();
                 }
                 System.out.println("\n--- Download Complete ---");
-                fileCleanup.deleteUnIncludedFiles(indexData);
+                fileCleanup.deleteUnIncludedFiles(indexData, modFiles);
                 System.out.println("\n--- Cleanup Complete ---");
                 System.out.println("Elapsed time: " + (System.currentTimeMillis() - startTime) / 1000 + "s");
 
                 if (System.currentTimeMillis() - startTime > 2000) {
                     UIUtils.detachedAlert("Modpack download complete!", "Download complete for \"" + config.name + "\"");
                 }
+                //Write cache file
+                CacheFile w = new CacheFile(saveDir.toPath());
+                w.modFiles.addAll(modFiles);
+                w.indexHashFormat = config.index.hashFormat;
+                w.indexHash = config.index.hash;
+                w.write();
             } else {
                 System.err.println("No index found!");
             }
 
         } catch (Exception e) {
             fail("Could not complete installation: ", e);
-
         }
     }
-
 
     static private final ExecutorService workerPool = Executors.newFixedThreadPool(8);
 
@@ -197,3 +268,7 @@ public class PackInstaller implements Runnable {
 
 
 }
+
+
+
+

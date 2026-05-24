@@ -60,7 +60,6 @@ public class FileDownloader {
             outFile = new File(saveDir, modFile.filename); //We need to compare the mod file itself not the pw.toml file
             outHash = modFile.download.hash;
             hashFormat = modFile.download.hashFormat;
-            PackInstaller.fileCleanup.modFiles.add(outFile.toPath());
         }
 
         if (outFile.exists()) {
