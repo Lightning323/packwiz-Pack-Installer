@@ -13,79 +13,78 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+
 public class ModpackCrashReporter {
 
     public static void main(String[] args) {
+        System.out.println("[Post-Exit] Starting crash reporter...");
         String minecraftDirPath = System.getenv("INST_MC_DIR");
         File mcDir = minecraftDirPath != null ? new File(minecraftDirPath) : new File(".");
 
-        ReporterConfig CONFIG = ReporterConfig.loadOrCreateConfig(mcDir);
+        ReporterConfig config = ReporterConfig.loadOrCreateConfig(mcDir);
+        System.out.println("[Post-Exit] Config loaded: " + config.toString());
 
         String instanceName = System.getenv("INST_NAME");
         if (instanceName == null) instanceName = "Minecraft Instance";
 
-        int parsedExitCode = -1;
-        if (args.length > 0) {
-            try {
-                parsedExitCode = Integer.parseInt(args[0]);
-                System.out.println("[Post-Exit] Received Minecraft exit code: " + parsedExitCode);
-            } catch (NumberFormatException e) {
-                System.err.println("[Post-Exit] Failed to parse exit code from argument: " + args[0]);
-            }
-        } else {
-            System.err.println("[Post-Exit] Warning: No exit code parameter passed by launcher arguments.");
-        }
-
-        // Capture effectively final copy for thread access
-        final int exitCode = parsedExitCode;
-
+        final int exitCode = -1;
         AtomicReference<String> logURL = new AtomicReference<>("No log file could be found or read.");
         AtomicReference<String> crashURL = new AtomicReference<>(null);
         AtomicReference<String> playerUsername = new AtomicReference<>(null);
 
-        File logFile = getLatestLog(mcDir);
+        try {
+            File logFile = getLatestLog(mcDir);
+            if (logFile != null && logFile.exists()) {
 
-        if (logFile != null && logFile.exists()) {
+                // Thread 1: Log Upload
+                Thread logUploadThread = new Thread(() -> {
+                    logURL.set(uploadToMcLogs(logFile));
+                });
 
-            // Thread 1: Log Upload
-            Thread logUploadThread = new Thread(() -> {
-                logURL.set(uploadToMcLogs(logFile));
-            });
+                // Thread 2: Username Scraper
+                Thread usernameThread = new Thread(() -> {
+                    if (config.allowUsernames) {
+                        playerUsername.set(parseUsernameFromLog(logFile));
+                    }
+                });
 
-            // Thread 2: Username Scraper
-            Thread usernameThread = new Thread(() -> {
-                if (CONFIG.allowUsernames) {
-                    playerUsername.set(parseUsernameFromLog(logFile));
+                // Thread 3: Crash Report Finder & Uploader
+                Thread crashUploadThread = new Thread(() -> {
+                    File crashFile = findCrashReportFromLog(logFile);
+                    if (crashFile != null && crashFile.exists()) {
+                        System.out.println("[Post-Exit] Found crash file: " + crashFile.getName() + ". Uploading...");
+                        crashURL.set(uploadToMcLogs(crashFile));
+                    }
+                });
+
+                // Start all processes concurrently
+                logUploadThread.start();
+                usernameThread.start();
+                crashUploadThread.start();
+
+                try {
+                    // Block main timeline until ALL background work has stabilized completely
+                    logUploadThread.join();
+                    usernameThread.join();
+                    crashUploadThread.join();
+                } catch (InterruptedException e) {
+                    System.err.println("[Main] Interrupted while waiting for uploads to finalize.");
                 }
-            });
-
-            // Thread 3: Crash Report Finder & Uploader
-            Thread crashUploadThread = new Thread(() -> {
-                File crashFile = findCrashReportFromLog(logFile);
-                if (crashFile != null && crashFile.exists()) {
-                    System.out.println("[Post-Exit] Found crash file: " + crashFile.getName() + ". Uploading...");
-                    crashURL.set(uploadToMcLogs(crashFile));
-                }
-            });
-
-            // Start all processes concurrently
-            logUploadThread.start();
-            usernameThread.start();
-            crashUploadThread.start();
-
-            try {
-                // Block main timeline until ALL background work has stabilized completely
-                logUploadThread.join();
-                usernameThread.join();
-                crashUploadThread.join();
-            } catch (InterruptedException e) {
-                System.err.println("[Main] Interrupted while waiting for uploads to finalize.");
-                Thread.currentThread().interrupt();
             }
+        } finally {
+            // 4. Dispatch final Discord notice payload securely
+            System.out.println("[Main] Dispatching final Discord notice payload...");
+            sendDiscordWebhook(config.webhookUrl, playerUsername.get(), instanceName, exitCode, logURL.get(), crashURL.get());
         }
-
-        // 4. Dispatch final Discord notice payload securely
-        sendDiscordWebhook(CONFIG.webhookUrl, playerUsername.get(), instanceName, exitCode, logURL.get(), crashURL.get());
     }
 
 
@@ -93,16 +92,20 @@ public class ModpackCrashReporter {
         if (latestLog == null || !latestLog.exists() || !latestLog.canRead()) {
             return "Unknown Player";
         }
-
-        // Capture the username between "Logged in as " and " with uuid"
-        Pattern userPattern = Pattern.compile("Logged in as\\s+([^\\s]+)\\s+with\\s+uuid");
-
+        Pattern[] userPatterns = new Pattern[]{
+                Pattern.compile("Logged in as\\s+([^\\s]+)\\s+with\\s+uuid"),
+                Pattern.compile("Setting user:\\s+([^\\s]+)"),
+                Pattern.compile("--username\\s+([^\\s,]+)")
+        };
         try (BufferedReader reader = new BufferedReader(new FileReader(latestLog, StandardCharsets.UTF_8))) {
             String line;
             while ((line = reader.readLine()) != null) {
-                Matcher matcher = userPattern.matcher(line);
-                if (matcher.find()) {
-                    return matcher.group(1).trim(); // Returns the exact gamertag
+                // Iterate through every regex pattern for the current log line
+                for (Pattern pattern : userPatterns) {
+                    Matcher matcher = pattern.matcher(line);
+                    if (matcher.find()) {
+                        return matcher.group(1).trim(); // Returns the dynamically matched gamertag
+                    }
                 }
             }
         } catch (Exception e) {
@@ -186,31 +189,72 @@ public class ModpackCrashReporter {
         }
     }
 
+
+    private static final ObjectMapper mapper = new ObjectMapper();
+
     private static void sendDiscordWebhook(String webhookURL, String playerName, String instanceName, int exitCode, String mclogsUrl, String crashLogUrl) {
+        if (webhookURL == null || webhookURL.trim().isEmpty()) {
+            System.err.println("[Post-Exit] Webhook URL is null or empty. Skipping execution.");
+            return;
+        }
+
         try {
+            // 1. Color logic (Green for success/crashlogs, Red for clean exits without crashlogs?
+            // Note: Check if your original ternary logic had the colors inverted)
             int color = (crashLogUrl != null || exitCode != 0) ? 65280 : 16711680;
             String timestamp = Instant.now().toString();
 
-            // Handle invalid/broken JSON syntax blocks dynamically if fields resolve to null
-            String escapedUsernameLine = (playerName == null || playerName.trim().isEmpty())
-                    ? ""
-                    : "    { \"name\": \"Username\", \"value\": \"" + playerName + "\", \"inline\": true },";
+            // 2. Build the JSON structure safely using Jackson Nodes
+            ObjectNode payload = mapper.createObjectNode();
+            ArrayNode embeds = payload.putArray("embeds");
+            ObjectNode embed = embeds.addObject();
 
-            String jsonPayload = "{"
-                    + "\"embeds\": [{"
-                    + "  \"title\": \"🎮 Instance Session Terminated\","
-                    + "  \"color\": " + color + ","
-                    + "  \"fields\": ["
-                    + escapedUsernameLine
-                    + "    { \"name\": \"Instance\", \"value\": \"" + instanceName + "\", \"inline\": true },"
-                    + (exitCode == -1 ? "" : "    { \"name\": \"Exit Code\", \"value\": \"`" + exitCode + "`\", \"inline\": true },")
-                    + "    { \"name\": \"Latest log\", \"value\": \"" + mclogsUrl + "\", \"inline\": false },"
-                    + (crashLogUrl == null ? "" : "    { \"name\": \"Crash log\", \"value\": \"" + crashLogUrl + "\", \"inline\": false }")
-                    + "  ],"
-                    + "  \"timestamp\": \"" + timestamp + "\""
-                    + "}]"
-                    + "}";
+            embed.put("title", "Instance Session Terminated");
+            embed.put("color", color);
+            embed.put("timestamp", timestamp);
 
+            ArrayNode fields = embed.putArray("fields");
+
+            // Conditionally add Username field
+            if (playerName != null && !playerName.trim().isEmpty()) {
+                fields.addObject()
+                        .put("name", "Username")
+                        .put("value", playerName)
+                        .put("inline", true);
+            }
+
+            // Add Instance field
+            fields.addObject()
+                    .put("name", "Instance")
+                    .put("value", instanceName != null ? instanceName : "Unknown")
+                    .put("inline", true);
+
+            // Conditionally add Exit Code field
+            if (exitCode != -1) {
+                fields.addObject()
+                        .put("name", "Exit Code")
+                        .put("value", "`" + exitCode + "`")
+                        .put("inline", true);
+            }
+
+            // Add Latest Log field
+            fields.addObject()
+                    .put("name", "Latest log")
+                    .put("value", mclogsUrl != null ? mclogsUrl : "N/A")
+                    .put("inline", false);
+
+            // Conditionally add Crash Log field
+            if (crashLogUrl != null && !crashLogUrl.trim().isEmpty()) {
+                fields.addObject()
+                        .put("name", "Crash log")
+                        .put("value", crashLogUrl)
+                        .put("inline", false);
+            }
+
+            // Convert the structural node straight to a byte array
+            byte[] jsonBytes = mapper.writeValueAsBytes(payload);
+
+            // 3. HTTP Request Execution
             URL url = new URL(webhookURL);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
@@ -219,10 +263,15 @@ public class ModpackCrashReporter {
             conn.setRequestProperty("User-Agent", "Java-Prism-PostExit");
 
             try (OutputStream os = conn.getOutputStream()) {
-                os.write(jsonPayload.getBytes(StandardCharsets.UTF_8));
+                os.write(jsonBytes);
             }
 
-            conn.getResponseCode();
+            // Check response to log actual API failures
+            int responseCode = conn.getResponseCode();
+            if (responseCode < 200 || responseCode >= 300) {
+                System.err.println("[Post-Exit] Discord returned error HTTP status: " + responseCode);
+            }
+
             conn.disconnect();
         } catch (Exception e) {
             System.err.println("[Post-Exit] Failed sending payload message to Discord webhook: " + e.getMessage());

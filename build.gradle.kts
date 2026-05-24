@@ -41,17 +41,17 @@ tasks.withType<Jar> {
 // Create a brand new task specifically for the cross-platform wrapper
 tasks.register<Jar>("wrapperJar") {
     group = "build"
-    description = "Assembles a lightweight cross-platform wrapper jar for Prism Launcher."
-    archiveFileName.set("wrapper.jar")
+    description = "Assembles a lightweight crash reporter jar for Prism Launcher."
+    archiveFileName.set("crashReporter.jar")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 
     manifest {
-        attributes["Main-Class"] = "com.lightning323.packInstaller.wrapper.ModpackPostExitTracker"
+        attributes["Main-Class"] = "com.lightning323.packInstaller.crashReporter.ModpackCrashReporter"
     }
 
     // 1. Include the wrapper's own compiled classes
     from(sourceSets.main.get().output) {
-        include("com/lightning323/packInstaller/wrapper/**")
+        include("com/lightning323/packInstaller/crashReporter/**")
     }
 
     // 2. Unpack and include ONLY Jackson dependencies into this JAR

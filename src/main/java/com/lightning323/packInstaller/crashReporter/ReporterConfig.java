@@ -14,7 +14,7 @@ public class ReporterConfig {
     }
 
     public static ReporterConfig loadOrCreateConfig(File mcDir) {
-        File configFile = new File(mcDir, "wrapper_config.json");
+        File configFile = new File(mcDir, "reporter_config.json");
 
         // Set up ObjectMapper with clean pretty-printing for generated configs
         ObjectMapper mapper = new ObjectMapper();
@@ -48,5 +48,9 @@ public class ReporterConfig {
             System.err.println("[Wrapper] Error reading config.json with Jackson: " + e.getMessage());
             return new ReporterConfig(); // Safe fallback to defaults if users corrupt the JSON syntax
         }
+    }
+
+    public String toString() {
+        return "ReporterConfig [webhookUrl=" + webhookUrl + ", allowUsernames=" + allowUsernames + "]";
     }
 }

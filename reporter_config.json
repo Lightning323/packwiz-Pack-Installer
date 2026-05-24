@@ -1,0 +1,4 @@
+{
+  "webhookUrl" : "YOUR_DISCORD_WEBHOOK_URL_HERE",
+  "allowUsernames" : false
+}
