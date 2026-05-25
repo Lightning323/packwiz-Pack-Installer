@@ -1,7 +1,9 @@
-package com.lightning323.packInstaller.installer.utils;
+package com.lightning323.packInstaller.installer;
 
 import com.fasterxml.jackson.dataformat.toml.TomlMapper;
 import com.lightning323.packInstaller.installer.fileTypes.ModFile;
+import com.lightning323.packInstaller.installer.utils.HashUtils;
+import com.lightning323.packInstaller.installer.utils.IOUtils;
 
 import java.io.*;
 import java.net.HttpURLConnection;
@@ -12,7 +14,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 
 public class ModDownloader {
 
@@ -23,30 +24,24 @@ public class ModDownloader {
     private static final TomlMapper mapper = new TomlMapper();
 
 
-    public static void downloadJar(String downloadUrl, String outputFolder, String fileName) throws IOException {
-        // 1. Ensure the directory exists
-        Path path = Paths.get(outputFolder);
-        if (!Files.exists(path)) {
-            Files.createDirectories(path);
-        }
+    public static void downloadMod(InstallerEntry mod) throws IOException {
+        System.out.println("Downloading: " + mod.path + "...");
+        System.out.println("URL: " + mod.url);
+        URL url = new URL(mod.modFile.download.url);
 
-        System.out.println("Downloading: " + fileName + "...");
-
-        URL url = new URL(downloadUrl);
         HttpURLConnection httpConn = (HttpURLConnection) url.openConnection();
         int responseCode = httpConn.getResponseCode();
 
         // 2. Check for success (200 OK)
         if (responseCode == HttpURLConnection.HTTP_OK) {
             try (BufferedInputStream in = new BufferedInputStream(httpConn.getInputStream());
-                 FileOutputStream fileOutputStream = new FileOutputStream(outputFolder + "/" + fileName)) {
+                 FileOutputStream fileOutputStream = new FileOutputStream(mod.path.toString())) {
 
                 byte[] dataBuffer = new byte[8192]; // 8KB buffer
                 int bytesRead;
                 while ((bytesRead = in.read(dataBuffer, 0, 1024)) != -1) {
                     fileOutputStream.write(dataBuffer, 0, bytesRead);
                 }
-                System.out.println("Finished: " + fileName);
             }
         } else {
             System.err.println("Failed to download file. Server replied HTTP code: " + responseCode);

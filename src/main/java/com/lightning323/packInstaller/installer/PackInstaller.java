@@ -6,7 +6,6 @@ import com.lightning323.packInstaller.installer.fileTypes.FileEntry;
 import com.lightning323.packInstaller.installer.fileTypes.IndexFile;
 import com.lightning323.packInstaller.installer.fileTypes.ModFile;
 import com.lightning323.packInstaller.installer.fileTypes.PackConfig;
-import com.lightning323.packInstaller.installer.utils.FileDownloader;
 import com.lightning323.packInstaller.installer.utils.IOUtils;
 import com.lightning323.packInstaller.installer.utils.UIUtils;
 
@@ -16,6 +15,7 @@ import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
+import java.net.HttpURLConnection;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.Path;
@@ -23,14 +23,12 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.lightning323.packInstaller.installer.utils.IOUtils.fetchString;
 import static com.lightning323.packInstaller.installer.utils.IOUtils.getRelativeUrl;
-import static com.lightning323.packInstaller.installer.utils.ModDownloader.MOD_TOML_FILE_EXT;
+import static com.lightning323.packInstaller.installer.ModDownloader.MOD_TOML_FILE_EXT;
 
 @Command(
         name = "packwiz pack installer",
@@ -91,7 +89,6 @@ public class PackInstaller implements Runnable {
     //-----------------------------------------------------------------------------------------------------
     //-----------------------------------------------------------------------------------------------------
 
-    public static FileCleanup fileCleanup;
 
     private static void fail(String message) {
         System.err.println("\nFAIL:\n" + message.toUpperCase());
@@ -99,7 +96,7 @@ public class PackInstaller implements Runnable {
         System.exit(1);
     }
 
-    private static void fail(String message, Throwable t) {
+    public static void fail(String message, Throwable t) {
         System.err.println("\nFAIL:\n" + message.toUpperCase());
         UIUtils.detachedAlert("Installation failed", message);
         if (t != null && t.getMessage() != null) {
@@ -119,6 +116,19 @@ public class PackInstaller implements Runnable {
 
     public final static HashSet<Path> modsToSpare = new HashSet<>();
 
+    /**
+     * Downloads and returns the entire contents of a URL as a byte array.
+     */
+    private static ModFile getModFromPwToml(URL url) throws IOException {
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        try (ByteArrayOutputStream writer = new ByteArrayOutputStream();
+             var inputStream = conn.getInputStream()) {
+            writer.write(inputStream.readAllBytes());
+            return ModDownloader.getFileEntry(writer.toByteArray());
+        } finally {
+            conn.disconnect();
+        }
+    }
 
     @Override
     public void run() {
@@ -168,8 +178,6 @@ public class PackInstaller implements Runnable {
                 if (!saveDir.exists()) {
                     fail("Failed to create save directory in " + saveDir.getAbsolutePath());
                 }
-
-                fileCleanup = new FileCleanup(saveDir);
                 //Read cache file
                 CacheFile r = new CacheFile(savePath);
                 r.read();
@@ -181,72 +189,62 @@ public class PackInstaller implements Runnable {
                     return;
                 }
 
-                if (SPARE_ADDED_MODS) {
-                    System.out.println("\n\n--- Calculating mods to spare ---");
-                    HashSet<Path> existingMods = new HashSet<>();
-                    for (File f : savePath.resolve("mods").toFile().listFiles()) {
-                        existingMods.add(f.toPath());
-                    }
-                    HashSet<Path> excluded = new HashSet<>();
-                    excluded.addAll(existingMods);
-                    excluded.removeAll(r.modFiles);
-                    modsToSpare.clear();
-                    for (Path p : excluded) {
-                        modsToSpare.add(savePath.relativize(p.toAbsolutePath().normalize()));
-                    }
-                    System.out.println("Mods to spare: " + modsToSpare.toString());
-                }
+//                if (SPARE_ADDED_MODS) {
+//                    System.out.println("\n\n--- Calculating mods to spare ---");
+//                    HashSet<Path> existingMods = new HashSet<>();
+//                    for (File f : savePath.resolve("mods").toFile().listFiles()) {
+//                        existingMods.add(f.toPath());
+//                    }
+//                    HashSet<Path> excluded = new HashSet<>();
+//                    excluded.addAll(existingMods);
+//                    excluded.removeAll(r.modFiles);
+//                    modsToSpare.clear();
+//                    for (Path p : excluded) {
+//                        modsToSpare.add(savePath.relativize(p.toAbsolutePath().normalize()));
+//                    }
+//                    System.out.println("Mods to spare: " + modsToSpare.toString());
+//                }
 
-                List<Path> modFiles = new ArrayList<>();
+                List<InstallerEntry> files = new ArrayList<>();
+                List<InstallerEntry> modFiles = new ArrayList<>();
 
                 //Index mods from index.toml
                 for (FileEntry entry : indexData.files) {
+                    File dir = savePath.resolve(entry.file()).toFile().getParentFile();
                     if (entry.file().endsWith(MOD_TOML_FILE_EXT)) {
                         try {
-                            File dir = savePath.relativize(savePath.resolve(entry.file())).toFile().getParentFile();
-                            ModFile modFile = FileDownloader.getModFromPwToml(IOUtils.getRelativeUrl(indexURL, entry.file()));
-                            modFiles.add(Path.of(dir.getPath(), modFile.filename));
+                            ModFile modFile = getModFromPwToml(IOUtils.getRelativeUrl(indexURL, entry.file()));
+                            modFiles.add(new InstallerEntry(Path.of(dir.getPath(), modFile.filename), modFile));
+                            files.add(new InstallerEntry(Path.of(dir.getPath(), modFile.filename), modFile));
                         } catch (IOException | URISyntaxException e) {
                             System.out.println("Failed to get mod from pw toml: " + entry.file());
                         }
-                    } else if (entry.file().endsWith(".jar")) {
-                        File dir = savePath.relativize(savePath.resolve(entry.file())).toFile().getParentFile();
-                        modFiles.add(Path.of(dir.getPath(), entry.file()));
+                    } else {
+                        Path path = Path.of(dir.getPath(), entry.file());
+                        URL url = getRelativeUrl(indexURL, entry.file());
+                        if (entry.file().endsWith(".jar"))
+                            modFiles.add(new InstallerEntry(path, url, entry.hash(), config.index.hashFormat));
+                        files.add(new InstallerEntry(path, url, entry.hash(), config.index.hashFormat));
                     }
                 }
+                System.out.println("\n--- Downloading to " + saveDir.getAbsolutePath() + " ---");
+                DownloadPhase.download(files);
 
-
-                System.out.println("\n" +
-                        "--- Downloading to " + saveDir.getAbsolutePath() + " ---");
-                AtomicBoolean stop = new AtomicBoolean(false);
-
-                for (FileEntry entry : indexData.files) {
-                    if (!stop.get()) workerPool.submit(() -> {
-                        try {
-                            FileDownloader.checkAndDownloadFile(indexURL, saveDir, config.index.hashFormat, entry);
-                        } catch (Exception e) {
-                            fail("Failed to download " + entry.file(), e);
-
-                        }
-                    });
-                }
-
-                //Wait for all tasks to complete
-                workerPool.shutdown();
-                if (!workerPool.awaitTermination(10, TimeUnit.MINUTES)) {
-                    workerPool.shutdownNow();
-                }
-                System.out.println("\n--- Download Complete ---");
-                fileCleanup.deleteUnIncludedFiles(indexData, modFiles);
-                System.out.println("\n--- Cleanup Complete ---");
+//                System.out.println("\n--- Cleanup ---");
+//                CleanupPhase.cleanup(indexData, modFiles);
+//                System.out.println("\n--- Cleanup Complete ---");
                 System.out.println("Elapsed time: " + (System.currentTimeMillis() - startTime) / 1000 + "s");
 
                 if (System.currentTimeMillis() - startTime > 2000) {
                     UIUtils.detachedAlert("Modpack download complete!", "Download complete for \"" + config.name + "\"");
                 }
+
+
                 //Write cache file
                 CacheFile w = new CacheFile(saveDir.toPath());
-                w.modFiles.addAll(modFiles);
+                for (InstallerEntry entry : modFiles) {
+                    w.modFiles.add(entry.path);
+                }
                 w.indexHashFormat = config.index.hashFormat;
                 w.indexHash = config.index.hash;
                 w.write();
@@ -259,7 +257,6 @@ public class PackInstaller implements Runnable {
         }
     }
 
-    static private final ExecutorService workerPool = Executors.newFixedThreadPool(8);
 
     public static void main(String[] args) {
         int exitCode = new CommandLine(new PackInstaller()).execute(args);
