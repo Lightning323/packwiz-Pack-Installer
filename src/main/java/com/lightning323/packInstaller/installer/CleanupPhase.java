@@ -20,12 +20,6 @@ public class CleanupPhase {
                 pathBlacklist.add(savePath.resolve(s));
             });
         }
-
-        //These are an ABSOLUTE MUST NOT be deleted
-        pathBlacklist.add(savePath.resolve("logs"));
-        pathBlacklist.add(savePath.resolve("saves"));
-        pathBlacklist.add(savePath.resolve("worlds"));
-        pathBlacklist.add(savePath.resolve("crash-reports"));
         pathWhitelist.removeAll(pathBlacklist);
 
         //Add the files that should exist

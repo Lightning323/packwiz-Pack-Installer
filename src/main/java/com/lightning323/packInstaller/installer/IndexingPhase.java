@@ -107,21 +107,26 @@ public class IndexingPhase {
             }
         }
         System.out.println("\n\n--- Gathering index files ---");
+        cleanupBlacklist.add(savePath.resolve("logs"));
+        cleanupBlacklist.add(savePath.resolve("saves"));
+        cleanupBlacklist.add(savePath.resolve("worlds"));
+        cleanupBlacklist.add(savePath.resolve("crash-reports"));
         System.out.println("Cleanup blacklist: " + cleanupBlacklist.toString());
+
         ExecutorService workerPool = Executors.newFixedThreadPool(4);
         for (FileEntry entry : indexData.files) {
             workerPool.submit(() -> {
                 try {
-                    File dir = savePath.resolve(entry.file()).toFile().getParentFile();
+                    Path path = savePath.resolve(entry.file());
+
                     if (entry.file().endsWith(PackInstaller.MOD_TOML_FILE_EXT)) {
                         ModFile modFile = getModFromPwToml(IOUtils.getRelativeUrl(indexURL, entry.file()));
-                        Path path = Path.of(dir.getPath(), modFile.filename);
+                        path = path.getParent().resolve(modFile.filename); //We don't want the .toml file, we want the mod file
                         synchronized (workerLock) {
                             allFiles.add(new InstallerEntry(path, modFile));
                             cleanupWhitelist.add(path);
                         }
                     } else {
-                        Path path = Path.of(dir.getPath(), entry.file());
                         URL url = getRelativeUrl(indexURL, entry.file());
                         synchronized (workerLock) {
                             allFiles.add(new InstallerEntry(path, url, entry.hash(), config.index.hashFormat));
@@ -137,6 +142,7 @@ public class IndexingPhase {
         if (!workerPool.awaitTermination(10, TimeUnit.MINUTES)) {
             workerPool.shutdownNow();
         }
+//        System.out.println(allFiles.toString());
 
         //Collect parent folders
         Set<Path> filtered = cleanupWhitelist.stream()
