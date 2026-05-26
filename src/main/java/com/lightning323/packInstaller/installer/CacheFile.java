@@ -1,99 +1,84 @@
 package com.lightning323.packInstaller.installer;
 
-import java.io.*;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class CacheFile {
 
-    // Instance-bound list prevents multi-threading/re-run state pollution
-    private File cacheFile;
-    private final Path basePath;
-
+    //Properties
     public String indexHashFormat;
     public String indexHash;
-    public final List<Path> modFiles = new ArrayList<>();
+    public List<String> modFiles = new ArrayList<>();
+    public List<String> otherFiles = new ArrayList<>();
+    //--------------------------
 
+    private static final ObjectMapper MAPPER = new ObjectMapper()
+            .enable(SerializationFeature.INDENT_OUTPUT);
 
-    public File getCacheFile() {
-        return cacheFile;
+    public static File getCacheFile(Path basePath) {
+        return basePath.resolve("cache.json").toFile();
     }
 
-    public CacheFile(Path savePath) {
-        this.basePath = savePath;
-        cacheFile = basePath.resolve("cache.txt").toFile();
-    }
-
-    public void read() {
-        if (cacheFile == null || !cacheFile.exists()) {
-            return;
+    public static CacheFile read(Path savePath) {
+        if (!getCacheFile(savePath).exists()) {
+            return null;
         }
-
-        // Clear previous state if re-reading an updated cache file
-        modFiles.clear();
-
-        System.out.println("\n--- Cache File ---");
-        try (BufferedReader reader = Files.newBufferedReader(cacheFile.toPath(), StandardCharsets.UTF_8)) {
-            String line;
-            int lineIndex = 0;
-
-            while ((line = reader.readLine()) != null) {
-                if (line.isBlank()) continue;
-
-                if (lineIndex == 0) {
-                    indexHashFormat = line.trim();
-                } else if (lineIndex == 1) {
-                    indexHash = line.trim();
-                } else {
-                    modFiles.add(basePath.resolve(line.trim()));
-                }
-                lineIndex++;
-            }
-
-            System.out.println("Current Hash Format: " + indexHashFormat);
-            System.out.println("Current Hash: " + indexHash);
-
+        try {
+            return MAPPER.readValue(getCacheFile(savePath), CacheFile.class);
         } catch (IOException e) {
             System.err.println("[Cache] Failed to read cache file: " + e.getMessage());
         }
+        return null;
     }
 
-    public boolean write() {
-        if (cacheFile == null) return false;
-        Path targetPath = cacheFile.toPath();
-        // Create a sibling temp file safely using the NIO.2 Framework
+    public static String normalizePackPath(Path basePath, String fullPath) {
+        Path normalizedBase = basePath.toAbsolutePath().normalize();
+        Path normalizedFull = Paths.get(fullPath).toAbsolutePath().normalize();
+        Path relative = normalizedBase.relativize(normalizedFull);
+        return relative.toString();
+    }
+
+    public boolean write(Path savePath) {
+
+        Path targetPath = getCacheFile(savePath).toPath();
         Path tempPath = targetPath.resolveSibling(targetPath.getFileName() + ".tmp");
 
+        modFiles = modFiles.stream()
+                .map(path -> normalizePackPath(savePath, path))
+                .collect(Collectors.toList());
+        otherFiles = otherFiles.stream()
+                .map(path -> normalizePackPath(savePath, path))
+                .collect(Collectors.toList());
+
         try {
-            // Use standard Java NIO files to write directly
-            try (BufferedWriter writer = Files.newBufferedWriter(tempPath, StandardCharsets.UTF_8)) {
-                writer.write(indexHashFormat);
-                writer.newLine();
-                writer.write(indexHash);
-                writer.newLine();
+            // Write JSON to temp file
+            MAPPER.writeValue(tempPath.toFile(), this);
 
-                for (Path modFile : modFiles) {
-                    // Store relative paths in the cache so the pack remains portable across machines
-                    Path relativePath = basePath.relativize(modFile);
-                    writer.write(relativePath.toString().replace("\\", "/"));
-                    writer.newLine();
-                }
-            }
+            // Atomic replace
+            Files.move(
+                    tempPath,
+                    targetPath,
+                    StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.ATOMIC_MOVE
+            );
 
-            // Atomic file system replacement
-            Files.move(tempPath, targetPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
             return true;
 
         } catch (IOException e) {
             System.err.println("[Cache] Failed writing cache atomically: " + e.getMessage());
+
             try {
                 Files.deleteIfExists(tempPath);
             } catch (IOException ignored) {
             }
+
             return false;
         }
     }

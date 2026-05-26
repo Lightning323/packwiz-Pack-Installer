@@ -1,5 +1,7 @@
 package com.lightning323.packInstaller.installer.utils;
 
+import com.lightning323.packInstaller.installer.PackInstaller;
+
 import java.io.*;
 import java.net.*;
 import java.nio.file.Files;
@@ -19,11 +21,27 @@ public class IOUtils {
         return absChild.startsWith(absParent);
     }
 
-    public static void writeFile(String hashFormat, byte[] bytes, File outFile, String hash) throws IOException {
+    public static Path getJarPath() {
+        Path jarFull = null;
+        try {
+            jarFull = Path.of(
+                    PackInstaller.class
+                            .getProtectionDomain()
+                            .getCodeSource()
+                            .getLocation()
+                            .toURI()
+            ).toAbsolutePath().normalize();
+        } catch (URISyntaxException e) {
+        }
+        return jarFull;
+    }
+
+    public static void writeFile(byte[] bytes, File outFile, String hashFormat, String hash) throws IOException {
         //Assert the hash
         if (!SKIP_HASH_CHECK && !HashUtils.getHash(hashFormat, bytes).equals(hash)) {
             throw new IOException("Hash for \"" + outFile.toPath() + "\" does not match!");
         }
+        outFile.getParentFile().mkdirs();
         Files.write(outFile.toPath(), bytes);
     }
 
