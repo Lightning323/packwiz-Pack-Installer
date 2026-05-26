@@ -1,13 +1,9 @@
 package com.lightning323.packInstaller.installer;
 
-import com.lightning323.packInstaller.installer.fileTypes.FileEntry;
-import com.lightning323.packInstaller.installer.fileTypes.IndexFile;
 import com.lightning323.packInstaller.installer.utils.IOUtils;
 
 import java.io.*;
-import java.net.URISyntaxException;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 
@@ -18,8 +14,12 @@ public class CleanupPhase {
 
     public static void cleanup(Path savePath, List<InstallerEntry> indexFiles) {
         //Spare paths
-        HashSet<Path> sparePaths = new HashSet<>(PATHS_TO_SPARE);
-        sparePaths.addAll(PATHS_TO_SPARE_CLEANUP);
+        HashSet<Path> sparePaths = new HashSet<>();
+        if (!FULL_RESET) {
+            SPARE_CLEANUP.forEach((s) -> {
+                sparePaths.add(savePath.resolve(s));
+            });
+        }
 
         //Add the files that should exist
         HashSet<Path> filesThatShouldExist = new HashSet<>();

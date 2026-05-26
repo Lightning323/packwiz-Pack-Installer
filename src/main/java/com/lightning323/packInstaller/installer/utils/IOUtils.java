@@ -12,6 +12,15 @@ import static com.lightning323.packInstaller.installer.PackInstaller.SKIP_HASH_C
 
 public class IOUtils {
 
+    public static boolean isSameLevel(Path basePath, Path filePath) {
+        Path relative = basePath.relativize(filePath);
+
+        // File must have exactly one name element
+        // Example: "file.txt"
+        // Not allowed: "folder/file.txt"
+        return relative.getNameCount() == 1;
+    }
+
     public static boolean isInsideOrEqual(Path child, Path parent) {
         // 1. Normalize and get absolute paths to handle "." or ".." or relative vs absolute
         Path absChild = child.toAbsolutePath().normalize();

@@ -7,8 +7,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.http.HttpClient;
@@ -16,18 +14,25 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static com.lightning323.packInstaller.installer.PackInstaller.PATHS_TO_SPARE;
-import static com.lightning323.packInstaller.installer.utils.IOUtils.*;
+import static com.lightning323.packInstaller.installer.PackInstaller.*;
 
 public class DownloadPhase {
 
-    public static void download(List<InstallerEntry> files) throws InterruptedException {
+    public static void download(Path savePath, List<InstallerEntry> files) throws InterruptedException {
+        //Dont overwrite specific files like options.txt or servers.dat
+        HashSet<File> spareFromOverwrite = new HashSet<>();
+        SPARE_OVERWRITE.forEach((s) -> {
+            File f = savePath.resolve(s).toFile();
+            if (f.exists() && !f.isDirectory()) spareFromOverwrite.add(f);
+        });
+
         ExecutorService workerPool = Executors.newFixedThreadPool(8);
 
         AtomicBoolean stop = new AtomicBoolean(false);
@@ -38,7 +43,9 @@ public class DownloadPhase {
                     if (entry.modFile != null) {
                         ModDownloader.checkAndDownloadMod(entry.modFile, entry.path);
                     } else {
-                        download(entry.downloadURL, entry.hashFormat, entry.hash, entry.path.toFile());
+                        //If the file is NOT one of the spare files and is not in the same level as the save path, we can overwrite
+                        boolean canOverwrite = !FULL_RESET && !spareFromOverwrite.contains(entry.path.toFile()) && !IOUtils.isSameLevel(entry.path, savePath);
+                        download(entry.downloadURL, entry.hashFormat, entry.hash, entry.path.toFile(), canOverwrite);
                     }
                 } catch (Exception e) {
                     PackInstaller.fail("Failed to download " + entry.toString(), e);
@@ -54,8 +61,10 @@ public class DownloadPhase {
         System.out.println("\n--- Download Complete ---");
     }
 
-    public static void download(URL url, String hashFormat, String hash, File outFile) throws IOException, InterruptedException, URISyntaxException {
-        if(outFile.exists()){ //Check if this file already exists
+    public static void download(URL url, String hashFormat, String hash, File outFile, boolean canOverwrite)
+            throws IOException, InterruptedException, URISyntaxException {
+        if (outFile.exists()) { //Check if this file already exists
+            if (!canOverwrite) return;//If we can't overwrite don't write to file
             byte[] bytes = Files.readAllBytes(outFile.toPath());
             String fileHash = HashUtils.getHash(hashFormat, bytes);
             if (fileHash.equals(hash)) {

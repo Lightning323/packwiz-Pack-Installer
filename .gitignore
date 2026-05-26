@@ -1,6 +1,23 @@
 /test_save/
 /save_pack
 /test-pack
+/testpack/
+/testpack_save/
+/test-pack/
+/test-pack_save/
+/Test-Pack/
+/Test-Pack_save/
+/TestPack/
+/TestPack_save/
+/TestPackSave/
+/Test-Pack-Save/
+/test-pack-save/
+/Test-Pack-Save_save/
+/TestPack-Save/
+/TestPack-Save_save/
+/TestPackSave_save/
+/Test-PackSave/
+/Test-PackSave_save/
 # Gradle local cache and wrapper distribution
 .gradle/
 build/

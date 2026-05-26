@@ -19,7 +19,6 @@ import java.net.HttpURLConnection;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -59,31 +58,30 @@ public class PackInstaller implements Runnable {
     @Option(names = {"-sm", "--spare-added-mods"}, description = "If we should spare mods added by the user")
     public static boolean SPARE_ADDED_MODS = false;
 
-    @Option(names = {"-sh", "--ship-hash-check"}, description = "If we should skip checking hashes")
+    @Option(names = {"-shc", "--ship-hash-check"}, description = "If we should skip checking hashes")
     public static boolean SKIP_HASH_CHECK = false;
 
     @Option(
-            names = {"--spare"},
-            description = "Files/directories to prevent overwriting or deletion",
-            split = ","
-    )
-    public static HashSet<Path> PATHS_TO_SPARE = new HashSet<>();
-
-    static {
-        PATHS_TO_SPARE.add(Paths.get("options.txt"));
-        PATHS_TO_SPARE.add(Paths.get("servers.dat"));
-    }
-
-    @Option(
-            names = {"--spare-cleanup"},
+            names = {"--spare-cleanup", "--sc"},
             description = "Files/directories to prevent deletion",
             split = ","
     )
-    public static HashSet<Path> PATHS_TO_SPARE_CLEANUP = new HashSet<>();
-
+    public static HashSet<String> SPARE_CLEANUP = new HashSet<>();
     static {
-        PATHS_TO_SPARE.add(Paths.get("/config"));
+        SPARE_CLEANUP.add("config");
     }
+
+    @Option(
+            names = {"--spare-overwrite", "--so"},
+            description = "Files to prevent deletion or overwriting",
+            split = ","
+    )
+    public static HashSet<String> SPARE_OVERWRITE = new HashSet<>();
+    static {
+        SPARE_OVERWRITE.add("options.txt");
+        SPARE_OVERWRITE.add("servers.dat");
+    }
+
     //-----------------------------------------------------------------------------------------------------
     //-----------------------------------------------------------------------------------------------------
     //-----------------------------------------------------------------------------------------------------
@@ -188,7 +186,8 @@ public class PackInstaller implements Runnable {
                     }
 
                     //If the hashes are the same
-                    if (cacheFile.indexHashFormat != null && cacheFile.indexHash != null
+                    if (!FULL_RESET &&
+                            cacheFile.indexHashFormat != null && cacheFile.indexHash != null
                             && cacheFile.indexHashFormat.equals(config.index.hashFormat)
                             && cacheFile.indexHash.equals(config.index.hash)) {
                         System.out.println("\n\n--- Hashes match. Checking cached files ---");
@@ -216,7 +215,7 @@ public class PackInstaller implements Runnable {
                     }
 
 
-                    if (SPARE_ADDED_MODS) {
+                    if (!FULL_RESET && SPARE_ADDED_MODS) {
                         System.out.println("\n\n--- Calculating mods to spare ---");
                         HashSet<Path> existingMods = new HashSet<>();
                         for (File f : savePath.resolve("mods").toFile().listFiles()) {
@@ -253,7 +252,7 @@ public class PackInstaller implements Runnable {
                     }
                 }
                 System.out.println("\n--- Downloading to " + saveDir.getAbsolutePath() + " ---");
-                DownloadPhase.download(allFiles);
+                DownloadPhase.download(savePath, allFiles);
 
                 System.out.println("\n--- Cleanup ---");
                 CleanupPhase.cleanup(savePath, allFiles);

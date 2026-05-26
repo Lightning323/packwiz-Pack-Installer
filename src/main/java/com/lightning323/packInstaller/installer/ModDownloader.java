@@ -56,6 +56,6 @@ public class ModDownloader {
             throw new RuntimeException("Invalid mod update URL");
         }
 
-        DownloadPhase.download(url, modToml.download.hashFormat, modToml.download.hash, jarOutputPath.toFile());
+        DownloadPhase.download(url, modToml.download.hashFormat, modToml.download.hash, jarOutputPath.toFile(), true);
     }
 }
