@@ -7,6 +7,7 @@ import com.lightning323.packInstaller.installer.fileTypes.IndexFile;
 import com.lightning323.packInstaller.installer.fileTypes.ModFile;
 import com.lightning323.packInstaller.installer.fileTypes.PackConfig;
 import com.lightning323.packInstaller.installer.utils.IOUtils;
+import com.lightning323.packInstaller.installer.utils.PathUtils;
 import com.lightning323.packInstaller.installer.utils.UIUtils;
 
 import java.io.*;
@@ -19,11 +20,15 @@ import java.net.HttpURLConnection;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import static com.lightning323.packInstaller.installer.utils.IOUtils.fetchString;
 import static com.lightning323.packInstaller.installer.utils.IOUtils.getRelativeUrl;
@@ -67,6 +72,7 @@ public class PackInstaller implements Runnable {
             split = ","
     )
     public static HashSet<String> SPARE_CLEANUP = new HashSet<>();
+
     static {
         SPARE_CLEANUP.add("config");
     }
@@ -77,6 +83,7 @@ public class PackInstaller implements Runnable {
             split = ","
     )
     public static HashSet<String> SPARE_OVERWRITE = new HashSet<>();
+
     static {
         SPARE_OVERWRITE.add("options.txt");
         SPARE_OVERWRITE.add("servers.dat");
@@ -97,10 +104,7 @@ public class PackInstaller implements Runnable {
     public static void fail(String message, Throwable t) {
         System.err.println("\nFAIL:\n" + message.toUpperCase());
         UIUtils.detachedAlert("Installation failed", message);
-        if (t != null && t.getMessage() != null) {
-            System.err.println(t.getMessage());
-            t.printStackTrace();
-        }
+        if (t != null) t.printStackTrace();
         System.exit(1);
     }
 
@@ -111,22 +115,6 @@ public class PackInstaller implements Runnable {
         mapper.setPropertyNamingStrategy(PropertyNamingStrategies.KEBAB_CASE);
     }
 
-
-    public final static HashSet<Path> modsToSpare = new HashSet<>();
-
-    /**
-     * Downloads and returns the entire contents of a URL as a byte array.
-     */
-    private static ModFile getModFromPwToml(URL url) throws IOException {
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        try (ByteArrayOutputStream writer = new ByteArrayOutputStream();
-             var inputStream = conn.getInputStream()) {
-            writer.write(inputStream.readAllBytes());
-            return ModDownloader.getFileEntry(writer.toByteArray());
-        } finally {
-            conn.disconnect();
-        }
-    }
 
     @Override
     public void run() {
@@ -176,86 +164,16 @@ public class PackInstaller implements Runnable {
                 if (!saveDir.exists()) {
                     fail("Failed to create save directory in " + saveDir.getAbsolutePath());
                 }
-                //Read cache file
-                CacheFile cacheFile = CacheFile.read(savePath);
-                if (cacheFile != null) {
-                    HashSet<Path> cachedMods = new HashSet<>();
-                    for (String s : cacheFile.modFiles) {
-                        Path f = savePath.resolve(s);
-                        cachedMods.add(f);
-                    }
 
-                    //If the hashes are the same
-                    if (!FULL_RESET &&
-                            cacheFile.indexHashFormat != null && cacheFile.indexHash != null
-                            && cacheFile.indexHashFormat.equals(config.index.hashFormat)
-                            && cacheFile.indexHash.equals(config.index.hash)) {
-                        System.out.println("\n\n--- Hashes match. Checking cached files ---");
-                        //Check to ensure all files are present
-                        boolean foundAllFilesThatShouldBeThere = true;
-                        for (String s : cacheFile.otherFiles) {
-                            Path f = savePath.resolve(s);
-                            if (!f.toFile().exists()) {
-                                foundAllFilesThatShouldBeThere = false;
-                                break;
-                            }
-                        }
-                        for (Path f : cachedMods) {
-                            if (!f.toFile().exists()) {
-                                foundAllFilesThatShouldBeThere = false;
-                                break;
-                            }
-                        }
-                        if (foundAllFilesThatShouldBeThere) {
-                            System.out.println("Hashes are the same and all files are present, no need to update.");
-                            return;
-                        } else {
-                            System.out.println("Hashes are the same, but some files are missing. Need to update.");
-                        }
-                    }
+                IndexingPhase indexingPhase = new IndexingPhase();
+                if (!indexingPhase.index(savePath, config, indexData, indexURL))
+                    return;
 
-
-                    if (!FULL_RESET && SPARE_ADDED_MODS) {
-                        System.out.println("\n\n--- Calculating mods to spare ---");
-                        HashSet<Path> existingMods = new HashSet<>();
-                        for (File f : savePath.resolve("mods").toFile().listFiles()) {
-                            existingMods.add(f.toPath());
-                        }
-                        HashSet<Path> excluded = new HashSet<>();
-                        excluded.addAll(existingMods);
-                        excluded.removeAll(cachedMods);
-                        modsToSpare.clear();
-                        for (Path p : excluded) {
-                            modsToSpare.add(savePath.relativize(p));
-                        }
-                    }
-                }
-                if (SPARE_ADDED_MODS) System.out.println("Mods to spare: " + modsToSpare.toString());
-
-                List<InstallerEntry> allFiles = new ArrayList<>();
-
-                //Index mods from index.toml
-                System.out.println("\n\n--- Gathering index files ---");
-                for (FileEntry entry : indexData.files) {
-                    File dir = savePath.resolve(entry.file()).toFile().getParentFile();
-                    if (entry.file().endsWith(MOD_TOML_FILE_EXT)) {
-                        try {
-                            ModFile modFile = getModFromPwToml(IOUtils.getRelativeUrl(indexURL, entry.file()));
-                            allFiles.add(new InstallerEntry(Path.of(dir.getPath(), modFile.filename), modFile));
-                        } catch (IOException | URISyntaxException e) {
-                            System.out.println("Failed to get mod from pw toml: " + entry.file());
-                        }
-                    } else {
-                        Path path = Path.of(dir.getPath(), entry.file());
-                        URL url = getRelativeUrl(indexURL, entry.file());
-                        allFiles.add(new InstallerEntry(path, url, entry.hash(), config.index.hashFormat));
-                    }
-                }
                 System.out.println("\n--- Downloading to " + saveDir.getAbsolutePath() + " ---");
-                DownloadPhase.download(savePath, allFiles);
+                DownloadPhase.download(savePath, indexingPhase.allFiles);
 
                 System.out.println("\n--- Cleanup ---");
-                CleanupPhase.cleanup(savePath, allFiles);
+                CleanupPhase.cleanup(savePath, indexingPhase.allFiles, indexingPhase.cleanupWhitelist, indexingPhase.cleanupBlacklist);
                 System.out.println("\n--- Cleanup Complete ---");
 
                 System.out.println("Elapsed time: " + (System.currentTimeMillis() - startTime) / 1000 + "s");
@@ -264,10 +182,9 @@ public class PackInstaller implements Runnable {
                     UIUtils.detachedAlert("Modpack download complete!", "Download complete for \"" + config.name + "\"");
                 }
 
-
                 //Write cache file
                 CacheFile w = new CacheFile();
-                for (InstallerEntry entry : allFiles) {
+                for (InstallerEntry entry : indexingPhase.allFiles) {
                     if (entry.isMod()) w.modFiles.add(entry.path.toString());
                     else w.otherFiles.add(entry.path.toString());
                 }

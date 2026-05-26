@@ -2,6 +2,7 @@ package com.lightning323.packInstaller.installer;
 
 import com.lightning323.packInstaller.installer.utils.HashUtils;
 import com.lightning323.packInstaller.installer.utils.IOUtils;
+import com.lightning323.packInstaller.installer.utils.PathUtils;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -34,9 +35,7 @@ public class DownloadPhase {
         });
 
         ExecutorService workerPool = Executors.newFixedThreadPool(8);
-
         AtomicBoolean stop = new AtomicBoolean(false);
-
         for (InstallerEntry entry : files) {
             if (!stop.get()) workerPool.submit(() -> {
                 try {
@@ -44,7 +43,7 @@ public class DownloadPhase {
                         ModDownloader.checkAndDownloadMod(entry.modFile, entry.path);
                     } else {
                         //If the file is NOT one of the spare files and is not in the same level as the save path, we can overwrite
-                        boolean canOverwrite = !FULL_RESET && !spareFromOverwrite.contains(entry.path.toFile()) && !IOUtils.isSameLevel(entry.path, savePath);
+                        boolean canOverwrite = !FULL_RESET && !spareFromOverwrite.contains(entry.path.toFile()) && !PathUtils.isSameLevel(entry.path, savePath);
                         download(entry.downloadURL, entry.hashFormat, entry.hash, entry.path.toFile(), canOverwrite);
                     }
                 } catch (Exception e) {
