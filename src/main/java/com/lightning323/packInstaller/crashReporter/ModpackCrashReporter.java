@@ -5,10 +5,8 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -18,10 +16,6 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
-import java.time.Instant;
 
 public class ModpackCrashReporter {
 
@@ -39,27 +33,31 @@ public class ModpackCrashReporter {
         final int exitCode = -1;
         AtomicReference<String> logURL = new AtomicReference<>("No log file could be found or read.");
         AtomicReference<String> crashURL = new AtomicReference<>(null);
+        AtomicReference<String> debugLogURL = new AtomicReference<>(null);
         AtomicReference<String> playerUsername = new AtomicReference<>(null);
 
         try {
-            File logFile = getLatestLog(mcDir);
-            if (logFile != null && logFile.exists()) {
-
-                // Thread 1: Log Upload
+            File latestLog = new File(mcDir, "logs/latest.log");
+            if (latestLog.exists()) {
                 Thread logUploadThread = new Thread(() -> {
-                    logURL.set(uploadToMcLogs(logFile));
+                    logURL.set(uploadToMcLogs(latestLog));
+                });
+
+                Thread debugLogUploadThread = new Thread(() -> {
+                    File debugLog = new File(mcDir, "logs/debug.log");
+                    if (debugLog.exists()) debugLogURL.set(uploadToMcLogs(debugLog));
                 });
 
                 // Thread 2: Username Scraper
                 Thread usernameThread = new Thread(() -> {
                     if (config.allowUsernames) {
-                        playerUsername.set(parseUsernameFromLog(logFile));
+                        playerUsername.set(parseUsernameFromLog(latestLog));
                     }
                 });
 
                 // Thread 3: Crash Report Finder & Uploader
                 Thread crashUploadThread = new Thread(() -> {
-                    File crashFile = findCrashReportFromLog(logFile);
+                    File crashFile = findCrashReport(mcDir, latestLog);
                     if (crashFile != null && crashFile.exists()) {
                         System.out.println("[Post-Exit] Found crash file: " + crashFile.getName() + ". Uploading...");
                         crashURL.set(uploadToMcLogs(crashFile));
@@ -75,6 +73,7 @@ public class ModpackCrashReporter {
                     // Block main timeline until ALL background work has stabilized completely
                     logUploadThread.join();
                     usernameThread.join();
+                    debugLogUploadThread.join();
                     crashUploadThread.join();
                 } catch (InterruptedException e) {
                     System.err.println("[Main] Interrupted while waiting for uploads to finalize.");
@@ -83,7 +82,7 @@ public class ModpackCrashReporter {
         } finally {
             // 4. Dispatch final Discord notice payload securely
             System.out.println("[Main] Dispatching final Discord notice payload...");
-            sendDiscordWebhook(config.webhookUrl, playerUsername.get(), instanceName, exitCode, logURL.get(), crashURL.get());
+            sendDiscordWebhook(config.webhookUrl, playerUsername.get(), instanceName, exitCode, logURL.get(), debugLogURL.get(), crashURL.get());
         }
     }
 
@@ -115,7 +114,7 @@ public class ModpackCrashReporter {
         return "Unknown Player"; // Fallback if parsing fails or user is playing offline mode
     }
 
-    private static File findCrashReportFromLog(File latestLog) {
+    private static File findCrashReport(File mcDir, File latestLog) {
         if (latestLog == null || !latestLog.exists() || !latestLog.canRead()) {
             return null;
         }
@@ -139,16 +138,22 @@ public class ModpackCrashReporter {
         } catch (Exception e) {
             System.err.println("[Post-Exit] Error parsing latest.log for crash reports: " + e.getMessage());
         }
+
+        //If we cant find it from the log, find it in the folders
+        File crashDir = new File(mcDir, "crash-reports");
+        if (crashDir.exists()) {
+            File[] crashFiles = crashDir.listFiles((dir, name) -> name.endsWith(".txt"));
+            if (crashFiles != null && crashFiles.length > 0) {
+                //Get the latest crash report
+                Arrays.sort(crashFiles, Comparator.comparingLong(File::lastModified).reversed());
+                File crashLog = crashFiles[0];
+                if (CrashLogParser.isCrashFromToday(crashLog)) return crashLog;
+            }
+        }
+
         return null;
     }
 
-    private static File getLatestLog(File mcDir) {
-        File latestLog = new File(mcDir, "logs/latest.log");
-        if (latestLog.exists()) {
-            return latestLog;
-        }
-        return null;
-    }
 
     private static String uploadToMcLogs(File logFile) {
         try {
@@ -192,7 +197,8 @@ public class ModpackCrashReporter {
 
     private static final ObjectMapper mapper = new ObjectMapper();
 
-    private static void sendDiscordWebhook(String webhookURL, String playerName, String instanceName, int exitCode, String mclogsUrl, String crashLogUrl) {
+    private static void sendDiscordWebhook(String webhookURL, String playerName, String instanceName, int exitCode,
+                                           String mclogsUrl, String debugLogUrl, String crashLogUrl) {
         if (webhookURL == null || webhookURL.trim().isEmpty()) {
             System.err.println("[Post-Exit] Webhook URL is null or empty. Skipping execution.");
             return;
@@ -248,6 +254,14 @@ public class ModpackCrashReporter {
                 fields.addObject()
                         .put("name", "Crash log")
                         .put("value", crashLogUrl)
+                        .put("inline", false);
+            }
+
+            // Conditionally add Debug Log field
+            if (debugLogUrl != null && !debugLogUrl.trim().isEmpty()) {
+                fields.addObject()
+                        .put("name", "Debug log")
+                        .put("value", debugLogUrl)
                         .put("inline", false);
             }
 
