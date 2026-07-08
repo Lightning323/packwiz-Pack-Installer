@@ -21,7 +21,7 @@ import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
 import static com.lightning323.packInstaller.installer.PackInstaller.*;
-import static com.lightning323.packInstaller.installer.utils.IOUtils.getRelativeUrl;
+import static com.lightning323.packInstaller.installer.utils.IOUtils.getRelativePath;
 
 public class IndexingPhase {
 
@@ -120,14 +120,14 @@ public class IndexingPhase {
                     Path path = savePath.resolve(entry.file());
 
                     if (entry.file().endsWith(PackInstaller.MOD_TOML_FILE_EXT)) {
-                        ModFile modFile = getModFromPwToml(IOUtils.getRelativeUrl(indexURL, entry.file()));
+                        ModFile modFile = getModFromPwToml(IOUtils.getRelativePath(indexURL, entry.file()));
                         path = path.getParent().resolve(modFile.filename); //We don't want the .toml file, we want the mod file
                         synchronized (workerLock) {
                             allFiles.add(new InstallerEntry(path, modFile));
                             cleanupWhitelist.add(path);
                         }
                     } else {
-                        URL url = getRelativeUrl(indexURL, entry.file());
+                        URL url = getRelativePath(indexURL, entry.file());
                         synchronized (workerLock) {
                             allFiles.add(new InstallerEntry(path, url, entry.hash(), config.index.hashFormat));
                             cleanupWhitelist.add(path);
