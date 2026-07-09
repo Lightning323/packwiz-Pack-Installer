@@ -6,12 +6,8 @@ import com.lightning323.packInstaller.installer.utils.HashUtils;
 import com.lightning323.packInstaller.installer.utils.IOUtils;
 
 import java.io.*;
-import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -56,6 +52,6 @@ public class ModDownloader {
             throw new RuntimeException("Invalid mod update URL");
         }
 
-        DownloadPhase.download(url, modToml.download.hashFormat, modToml.download.hash, jarOutputPath.toFile(), true);
+        IOUtils.downloadFile(url, modToml.download.hashFormat, modToml.download.hash, jarOutputPath.toFile(), true);
     }
 }

@@ -29,14 +29,7 @@ public class IndexingPhase {
      * Downloads and returns the entire contents of a URL as a byte array.
      */
     private static ModFile getModFromPwToml(URL url) throws IOException {
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        try (ByteArrayOutputStream writer = new ByteArrayOutputStream();
-             var inputStream = conn.getInputStream()) {
-            writer.write(inputStream.readAllBytes());
-            return ModDownloader.getFileEntry(writer.toByteArray());
-        } finally {
-            conn.disconnect();
-        }
+        return ModDownloader.getFileEntry(IOUtils.getFileAsBytes(url));
     }
 
 

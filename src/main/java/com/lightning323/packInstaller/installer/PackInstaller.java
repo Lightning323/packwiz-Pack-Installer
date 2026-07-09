@@ -2,12 +2,8 @@ package com.lightning323.packInstaller.installer;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.dataformat.toml.TomlMapper;
-import com.lightning323.packInstaller.installer.fileTypes.FileEntry;
 import com.lightning323.packInstaller.installer.fileTypes.IndexFile;
-import com.lightning323.packInstaller.installer.fileTypes.ModFile;
 import com.lightning323.packInstaller.installer.fileTypes.PackConfig;
-import com.lightning323.packInstaller.installer.utils.IOUtils;
-import com.lightning323.packInstaller.installer.utils.PathUtils;
 import com.lightning323.packInstaller.installer.utils.UIUtils;
 
 import java.io.*;
@@ -16,21 +12,14 @@ import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
-import java.net.HttpURLConnection;
-import java.net.URISyntaxException;
+import java.net.URI;
 import java.net.URL;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
-import static com.lightning323.packInstaller.installer.utils.IOUtils.fetchString;
+import static com.lightning323.packInstaller.installer.utils.IOUtils.getFileAsString;
 import static com.lightning323.packInstaller.installer.utils.IOUtils.getRelativeUrl;
 
 @Command(
@@ -51,11 +40,11 @@ import static com.lightning323.packInstaller.installer.utils.IOUtils.getRelative
 public class PackInstaller implements Runnable {
 
     //Parameters
-    @Option(names = {"-u", "--url"}, description = "URL to the packwiz pack.toml file")
-    public static URL PACK_TOML_URL;
+    @Option(names = {"-u", "--url"}, description = "Filepath / URL to the packwiz pack.toml file")
+    public static String PACK_TOML_URL_INPUT;
 
     @Option(names = {"-s", "--save"}, description = "The output save directory (default: ./)", defaultValue = "./")
-    public static File saveDir;
+    public static String saveDirInput;
 
     @Option(names = {"-r", "--reset"}, description = "Do a full cleanup (reset all files)")
     public static boolean FULL_RESET = false;
@@ -72,6 +61,7 @@ public class PackInstaller implements Runnable {
             split = ","
     )
     public static HashSet<String> SPARE_CLEANUP = new HashSet<>();
+
     static {
         SPARE_CLEANUP.add("config");
     }
@@ -82,6 +72,7 @@ public class PackInstaller implements Runnable {
             split = ","
     )
     public static HashSet<String> SPARE_OVERWRITE = new HashSet<>();
+
     static {
         SPARE_OVERWRITE.add("options.txt");
         SPARE_OVERWRITE.add("servers.dat");
@@ -119,8 +110,26 @@ public class PackInstaller implements Runnable {
         if (SKIP_HASH_CHECK) {
             System.out.println("WARNING: Skipping hash check is not recommended for security reasons. use at your own risk!");
         }
-        if (PACK_TOML_URL == null) {
-            System.err.println("Pack TOML URL is required");
+
+        URL PACK_TOML_URL = null;
+        if (PACK_TOML_URL_INPUT != null) {
+            try {
+                if (PACK_TOML_URL_INPUT.startsWith("http://") || PACK_TOML_URL_INPUT.startsWith("https://")) {
+                    // It's a web URL - convert via modern URI mapping to ensure it's valid
+                    PACK_TOML_URL = new URI(PACK_TOML_URL_INPUT).toURL();
+                } else {
+                    // It's a local file path!
+                    // Paths.get() handles spaces perfectly and converts it to a file:// URL
+                    PACK_TOML_URL = java.nio.file.Paths.get(PACK_TOML_URL_INPUT).toAbsolutePath().toUri().toURL();
+                }
+                System.out.println("\n--- Installing from " + PACK_TOML_URL+" ---");
+            } catch (Exception e) {
+                System.err.println("Error parsing the pack.toml path: " + e.getMessage());
+                CommandLine.usage(this, System.out);
+                System.exit(1);
+            }
+        } else {
+            System.err.println("Pack TOML Path is required");
             CommandLine.usage(this, System.out);
             System.exit(1);
         }
@@ -128,7 +137,7 @@ public class PackInstaller implements Runnable {
         try {
             long startTime = System.currentTimeMillis();
             System.out.println("Fetching pack configuration...");
-            String packContent = fetchString(PACK_TOML_URL);
+            String packContent = getFileAsString(PACK_TOML_URL);
 
             // Deserialize PackConfig
             PackConfig config = mapper.readValue(packContent, PackConfig.class);
@@ -155,19 +164,24 @@ public class PackInstaller implements Runnable {
 
                 //Get the index.toml
                 URL indexURL = getRelativeUrl(PACK_TOML_URL, config.index.file);
-                String indexContent = fetchString(indexURL);
+                String indexContent = getFileAsString(indexURL);
                 IndexFile indexData = mapper.readValue(indexContent, IndexFile.class);
+
+
+                //Setup save directory
+                File saveDir = new File(saveDirInput);
                 saveDir.mkdirs();
                 Path savePath = saveDir.toPath();
                 if (!saveDir.exists()) {
                     fail("Failed to create save directory in " + saveDir.getAbsolutePath());
                 }
+                System.out.println("\n--- Downloading to " + saveDir.getAbsolutePath() + " ---");
+
 
                 IndexingPhase indexingPhase = new IndexingPhase();
                 if (!indexingPhase.index(savePath, config, indexData, indexURL))
                     return;
 
-                System.out.println("\n--- Downloading to " + saveDir.getAbsolutePath() + " ---");
                 DownloadPhase.download(savePath, indexingPhase.allFiles);
 
                 System.out.println("\n--- Cleanup ---");
