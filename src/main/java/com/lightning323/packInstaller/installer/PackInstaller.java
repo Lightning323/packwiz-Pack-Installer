@@ -2,8 +2,12 @@ package com.lightning323.packInstaller.installer;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.dataformat.toml.TomlMapper;
+import com.lightning323.packInstaller.installer.fileTypes.FileEntry;
 import com.lightning323.packInstaller.installer.fileTypes.IndexFile;
+import com.lightning323.packInstaller.installer.fileTypes.ModFile;
 import com.lightning323.packInstaller.installer.fileTypes.PackConfig;
+import com.lightning323.packInstaller.installer.utils.IOUtils;
+import com.lightning323.packInstaller.installer.utils.PathUtils;
 import com.lightning323.packInstaller.installer.utils.UIUtils;
 
 import java.io.*;
@@ -12,14 +16,22 @@ import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
+import java.net.HttpURLConnection;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
-import static com.lightning323.packInstaller.installer.utils.IOUtils.getStringFromPath;
-import static com.lightning323.packInstaller.installer.utils.IOUtils.getRelativePath;
+import static com.lightning323.packInstaller.installer.utils.IOUtils.fetchString;
+import static com.lightning323.packInstaller.installer.utils.IOUtils.getRelativeUrl;
 
 @Command(
         name = "packwiz pack installer",
@@ -39,8 +51,8 @@ import static com.lightning323.packInstaller.installer.utils.IOUtils.getRelative
 public class PackInstaller implements Runnable {
 
     //Parameters
-    @Option(names = {"-u", "--url", "-p", "--path"}, description = "URL/filepath to the packwiz pack.toml file")
-    public static String PACK_TOML_URL;
+    @Option(names = {"-u", "--url"}, description = "URL to the packwiz pack.toml file")
+    public static URL PACK_TOML_URL;
 
     @Option(names = {"-s", "--save"}, description = "The output save directory (default: ./)", defaultValue = "./")
     public static File saveDir;
@@ -108,7 +120,7 @@ public class PackInstaller implements Runnable {
             System.out.println("WARNING: Skipping hash check is not recommended for security reasons. use at your own risk!");
         }
         if (PACK_TOML_URL == null) {
-            System.err.println("Pack TOML URL/Filepath is required");
+            System.err.println("Pack TOML URL is required");
             CommandLine.usage(this, System.out);
             System.exit(1);
         }
@@ -116,7 +128,7 @@ public class PackInstaller implements Runnable {
         try {
             long startTime = System.currentTimeMillis();
             System.out.println("Fetching pack configuration...");
-            String packContent = getStringFromPath(PACK_TOML_URL);
+            String packContent = fetchString(PACK_TOML_URL);
 
             // Deserialize PackConfig
             PackConfig config = mapper.readValue(packContent, PackConfig.class);
@@ -142,8 +154,8 @@ public class PackInstaller implements Runnable {
                 System.out.println("Hash: " + config.index.hash);
 
                 //Get the index.toml
-                URL indexURL = getRelativePath(PACK_TOML_URL, config.index.file);
-                String indexContent = getStringFromPath(indexURL);
+                URL indexURL = getRelativeUrl(PACK_TOML_URL, config.index.file);
+                String indexContent = fetchString(indexURL);
                 IndexFile indexData = mapper.readValue(indexContent, IndexFile.class);
                 saveDir.mkdirs();
                 Path savePath = saveDir.toPath();
