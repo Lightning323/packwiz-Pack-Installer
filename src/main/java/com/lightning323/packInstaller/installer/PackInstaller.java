@@ -63,7 +63,7 @@ public class PackInstaller implements Runnable {
     public static HashSet<String> SPARE_CLEANUP = new HashSet<>();
 
     static {
-        SPARE_CLEANUP.add("config");
+        SPARE_CLEANUP.add("worlds");
     }
 
     @Option(
