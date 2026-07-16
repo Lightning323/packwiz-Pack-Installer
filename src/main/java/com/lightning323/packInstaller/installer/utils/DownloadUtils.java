@@ -37,10 +37,15 @@ public class DownloadUtils {
         boolean isLocalFile = "file".equalsIgnoreCase(url.getProtocol()) || url.toString().startsWith("file:");
 
         if (isLocalFile) {
+            // Ensure parental directories exist locally
             if (outFile.getParentFile() != null) {
                 outFile.getParentFile().mkdirs();
             }
-            try (InputStream is = url.openStream()) {
+
+            // Convert URL to URI, then to a Path to correctly decode %20 and other characters
+            java.nio.file.Path localPath = java.nio.file.Paths.get(url.toURI());
+
+            try (InputStream is = Files.newInputStream(localPath)) {
                 byte[] allBytes = is.readAllBytes();
                 IOUtils.writeFile(allBytes, outFile, hashFormat, hash);
             }
