@@ -16,16 +16,15 @@ import java.net.URI;
 import java.net.URL;
 import java.nio.file.Path;
 import java.util.HashSet;
+import java.util.Properties;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-
 import static com.lightning323.packInstaller.installer.utils.IOUtils.getFileAsString;
 import static com.lightning323.packInstaller.installer.utils.IOUtils.getRelativeUrl;
 
 @Command(
         name = "packwiz pack installer",
         mixinStandardHelpOptions = true,
-        version = "1.0.3",
         headerHeading = "%n", // Adds a newline before the header
         header = {
                 "@|fg(cyan)  _       _       ___       __ ___            _  _  |@",
@@ -61,6 +60,7 @@ public class PackInstaller implements Runnable {
             split = ","
     )
     public static HashSet<String> SPARE_CLEANUP = new HashSet<>();
+
     static {
         SPARE_CLEANUP.add("worlds");
         SPARE_CLEANUP.add("saves");
@@ -73,6 +73,7 @@ public class PackInstaller implements Runnable {
             split = ","
     )
     public static HashSet<String> SPARE_OVERWRITE = new HashSet<>();
+
     static {
         SPARE_OVERWRITE.add("options.txt");
         SPARE_OVERWRITE.add("servers.dat");
@@ -104,6 +105,18 @@ public class PackInstaller implements Runnable {
         mapper.setPropertyNamingStrategy(PropertyNamingStrategies.KEBAB_CASE);
     }
 
+    public static String getProjectProperty(String property) {
+        try (InputStream is = PackInstaller.class.getClassLoader().getResourceAsStream("project.properties")) {
+            if (is != null) {
+                Properties prop = new Properties();
+                prop.load(is);
+                return prop.getProperty(property);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
 
     @Override
     public void run() {
@@ -122,7 +135,7 @@ public class PackInstaller implements Runnable {
                     // Paths.get() handles spaces perfectly and converts it to a file:// URL
                     PACK_TOML_URL = java.nio.file.Paths.get(PACK_TOML_URL_INPUT).toAbsolutePath().toUri().toURL();
                 }
-                System.out.println("\n--- Installing from " + PACK_TOML_URL+" ---");
+                System.out.println("\n--- Installing from " + PACK_TOML_URL + " ---");
             } catch (Exception e) {
                 System.err.println("Error parsing the pack.toml path: " + e.getMessage());
                 CommandLine.usage(this, System.out);
@@ -214,6 +227,7 @@ public class PackInstaller implements Runnable {
 
 
     public static void main(String[] args) {
+        System.out.println("Pack-Installer " + getProjectProperty("version"));
         int exitCode = new CommandLine(new PackInstaller()).execute(args);
         System.exit(exitCode);
     }

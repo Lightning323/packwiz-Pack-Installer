@@ -7,6 +7,12 @@ plugins {
 group = "org.lightning323"
 version = "1.2.0"
 
+tasks.processResources {
+    filesMatching("**/project.properties") {
+        expand("version" to project.version)
+    }
+}
+
 repositories {
     mavenCentral()
 }
