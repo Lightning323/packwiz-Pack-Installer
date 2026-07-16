@@ -182,7 +182,7 @@ public class PackInstaller implements Runnable {
                 if (!indexingPhase.index(savePath, config, indexData, indexURL))
                     return;
 
-                DownloadPhase.download(savePath, indexingPhase.allFiles);
+                DownloadPhase.downloadAllFiles(savePath, indexingPhase.allFiles);
 
                 System.out.println("\n--- Cleanup ---");
                 CleanupPhase.cleanup(savePath, indexingPhase.allFiles, indexingPhase.cleanupWhitelist, indexingPhase.cleanupBlacklist);

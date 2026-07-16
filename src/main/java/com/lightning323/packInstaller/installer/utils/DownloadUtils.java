@@ -11,6 +11,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -20,7 +21,7 @@ public class DownloadUtils {
             .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
 
-    public static void downloadFile(URL url, String hashFormat, String hash, File outFile, boolean canOverwrite)
+    public static void downloadFile(URL url, String hashFormat, String hash, Path baseDir, File outFile, boolean canOverwrite)
             throws IOException, InterruptedException, URISyntaxException {
 
         if (outFile.exists()) {
@@ -32,7 +33,8 @@ public class DownloadUtils {
             }
         }
 
-        System.out.println("Downloading: " + outFile.getName() + " \t (" + url + ")..");
+        Path relativePath = baseDir.relativize(outFile.toPath());
+        System.out.println("Downloading: " + relativePath + " \t (" + url + ")..");
 
         boolean isLocalFile = "file".equalsIgnoreCase(url.getProtocol()) || url.toString().startsWith("file:");
 
@@ -56,7 +58,7 @@ public class DownloadUtils {
             // 1. Detect if this is a Git LFS pointer file
             String contentSample = new String(fileData, java.nio.charset.StandardCharsets.UTF_8);
             if (isLfsPointer(contentSample)) {
-                System.out.println("-> Detected Git LFS Pointer. Fetching actual binary via Git LFS API...");
+                System.out.println("-> Detected Git LFS Pointer in " + relativePath + ". Fetching actual binary via Git LFS API...");
                 fileData = resolveAndDownloadLfsBinary(url, contentSample);
             }
 
@@ -100,12 +102,12 @@ public class DownloadUtils {
     private static byte[] resolveAndDownloadLfsBinary(URL originalUrl, String pointerContent)
             throws IOException, InterruptedException, URISyntaxException {
 
-        // 1. Parse OID and Size from the pointer content
-        String oid = extractValue(pointerContent, "oid sha256:([a-fA-F0-8]{64})");
+        // 1. Parse OID and Size with safer, fixed regex patterns
+        // \s* matches any spaces, \S+ matches any non-whitespace characters (the hash)
+        String oid = extractValue(pointerContent, "oid sha256:(\\S+)");
         long size = Long.parseLong(extractValue(pointerContent, "size (\\d+)"));
 
-        // 2. Build LFS API Endpoint from your GitHub/Web URL
-        // Example: https://github.com/owner/repo/raw/main/file.ext -> https://github.com/owner/repo.git/info/lfs/objects/batch
+        // 2. Build LFS API Endpoint
         String lfsApiUrl = constructLfsApiUrl(originalUrl.toString());
 
         // 3. Craft JSON payload for the Git LFS Batch API
@@ -126,7 +128,7 @@ public class DownloadUtils {
             throw new RuntimeException("LFS API call failed with status: " + lfsResponse.statusCode() + "\n" + lfsResponse.body());
         }
 
-        // 4. Extract the AWS S3/Azure CDN download URL (href) from the JSON response
+        // 4. Extract the AWS S3 download URL
         String realDownloadUrl = extractDownloadUrl(lfsResponse.body());
 
         System.out.println("-> Real LFS URL resolved successfully.");
@@ -134,11 +136,12 @@ public class DownloadUtils {
     }
 
     private static String extractValue(String input, String regex) {
-        Matcher matcher = Pattern.compile(regex).matcher(input);
+        // Enable MULTILINE mode so ^ and $ match line boundaries in the pointer file
+        Matcher matcher = Pattern.compile(regex, Pattern.MULTILINE).matcher(input);
         if (matcher.find()) {
-            return matcher.group(1);
+            return matcher.group(1).trim();
         }
-        throw new IllegalArgumentException("Failed to parse pattern matching " + regex + " from LFS pointer file.");
+        throw new IllegalArgumentException("Failed to parse pattern matching " + regex + " from LFS pointer file.\nContent:\n" + input);
     }
 
     private static String constructLfsApiUrl(String rawUrl) {

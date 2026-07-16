@@ -1,10 +1,7 @@
-package com.lightning323.packInstaller.installer;
+package com.lightning323.packInstaller.installer.utils;
 
 import com.fasterxml.jackson.dataformat.toml.TomlMapper;
 import com.lightning323.packInstaller.installer.fileTypes.ModFile;
-import com.lightning323.packInstaller.installer.utils.DownloadUtils;
-import com.lightning323.packInstaller.installer.utils.HashUtils;
-import com.lightning323.packInstaller.installer.utils.IOUtils;
 
 import java.io.*;
 import java.net.URISyntaxException;
@@ -29,7 +26,7 @@ public class ModDownloader {
         return mapper.readValue(pwTomlFile, ModFile.class);
     }
 
-    public static void checkAndDownloadMod(ModFile modToml, Path jarOutputPath)
+    public static void checkAndDownloadMod(ModFile modToml, Path baseDir, Path jarOutputPath)
             throws IOException, InterruptedException, URISyntaxException {
 
         if (Files.exists(jarOutputPath) //If the jar already exists and its hash matches
@@ -53,6 +50,6 @@ public class ModDownloader {
             throw new RuntimeException("Invalid mod update URL");
         }
 
-        DownloadUtils.downloadFile(url, modToml.download.hashFormat, modToml.download.hash, jarOutputPath.toFile(), true);
+        DownloadUtils.downloadFile(url, modToml.download.hashFormat, modToml.download.hash,baseDir, jarOutputPath.toFile(), true);
     }
 }
