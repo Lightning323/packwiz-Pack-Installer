@@ -1,7 +1,8 @@
-package com.lightning323.packInstaller.installer.utils;
+package com.lightning323.packInstaller.installer.utils.downloading;
 
 import com.fasterxml.jackson.dataformat.toml.TomlMapper;
 import com.lightning323.packInstaller.installer.fileTypes.ModFile;
+import com.lightning323.packInstaller.installer.utils.HashUtils;
 
 import java.io.*;
 import java.net.URISyntaxException;

@@ -1,7 +1,7 @@
 package com.lightning323.packInstaller.installer;
 
-import com.lightning323.packInstaller.installer.utils.DownloadUtils;
-import com.lightning323.packInstaller.installer.utils.ModDownloader;
+import com.lightning323.packInstaller.installer.utils.downloading.DownloadUtils;
+import com.lightning323.packInstaller.installer.utils.downloading.ModDownloader;
 import com.lightning323.packInstaller.installer.utils.PathUtils;
 
 import java.io.File;

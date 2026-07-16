@@ -5,7 +5,7 @@ import com.lightning323.packInstaller.installer.fileTypes.IndexFile;
 import com.lightning323.packInstaller.installer.fileTypes.ModFile;
 import com.lightning323.packInstaller.installer.fileTypes.PackConfig;
 import com.lightning323.packInstaller.installer.utils.IOUtils;
-import com.lightning323.packInstaller.installer.utils.ModDownloader;
+import com.lightning323.packInstaller.installer.utils.downloading.ModDownloader;
 
 import java.io.File;
 import java.io.IOException;
