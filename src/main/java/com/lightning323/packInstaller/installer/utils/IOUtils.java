@@ -7,6 +7,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static com.lightning323.packInstaller.installer.PackInstaller.SKIP_HASH_CHECK;
@@ -61,55 +63,4 @@ public class IOUtils {
         }
     }
 
-    public static void downloadFile(URL url, String hashFormat, String hash, File outFile, boolean canOverwrite)
-            throws IOException, InterruptedException, URISyntaxException {
-        if (outFile.exists()) { // Check if this file already exists
-            if (!canOverwrite) return; // If we can't overwrite don't write to file
-            byte[] bytes = Files.readAllBytes(outFile.toPath());
-            String fileHash = HashUtils.getHash(hashFormat, bytes);
-            if (fileHash.equals(hash)) {
-                return; // Already downloaded and correct
-            }
-        }
-        System.out.println("Downloading: " + outFile.getName() + " \t (" + url + ")..");
-
-        boolean isLocalFile = "file".equalsIgnoreCase(url.getProtocol()) || url.toString().startsWith("file:");
-
-        if (isLocalFile) { // --- Local File handling ---
-            // Ensure parental directories exist locally
-            if (outFile.getParentFile() != null) {
-                outFile.getParentFile().mkdirs();
-            }
-
-            // Open stream directly from the file URL and write it out
-            try (InputStream is = url.openStream()) {
-                byte[] allBytes = is.readAllBytes();
-                IOUtils.writeFile(allBytes, outFile, hashFormat, hash);
-            }
-        } else {   // --- Web handling (HTTP/HTTPS) ---
-            HttpClient client = HttpClient.newBuilder()
-                    .followRedirects(HttpClient.Redirect.NORMAL)
-                    .build();
-
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(url.toURI())
-                    .GET()
-                    .build();
-
-            HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
-            if (response.statusCode() == 200) {
-                ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                try (InputStream is = response.body()) {
-                    byte[] buffer = new byte[4096];
-                    int bytesRead;
-                    while ((bytesRead = is.read(buffer)) != -1) {
-                        baos.write(buffer, 0, bytesRead);
-                    }
-                }
-                IOUtils.writeFile(baos.toByteArray(), outFile, hashFormat, hash);
-            } else {
-                throw new RuntimeException("Failed to download file. HTTP Status: " + response.statusCode());
-            }
-        }
-    }
 }

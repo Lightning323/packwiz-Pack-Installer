@@ -1,5 +1,6 @@
 package com.lightning323.packInstaller.installer;
 
+import com.lightning323.packInstaller.installer.utils.DownloadUtils;
 import com.lightning323.packInstaller.installer.utils.IOUtils;
 import com.lightning323.packInstaller.installer.utils.PathUtils;
 
@@ -34,7 +35,7 @@ public class DownloadPhase {
                     } else {
                         //If the file is NOT one of the spare files and is not in the same level as the save path, we can overwrite
                         boolean canOverwrite = !FULL_RESET && !spareFromOverwrite.contains(entry.path.toFile()) && !PathUtils.isSameLevel(entry.path, savePath);
-                        IOUtils.downloadFile(entry.downloadURL, entry.hashFormat, entry.hash, entry.path.toFile(), canOverwrite);
+                        DownloadUtils.downloadFile(entry.downloadURL, entry.hashFormat, entry.hash, entry.path.toFile(), canOverwrite);
                     }
                 } catch (Exception e) {
                     PackInstaller.fail("Failed to download " + entry.toString(), e);

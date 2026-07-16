@@ -2,6 +2,7 @@ package com.lightning323.packInstaller.installer;
 
 import com.fasterxml.jackson.dataformat.toml.TomlMapper;
 import com.lightning323.packInstaller.installer.fileTypes.ModFile;
+import com.lightning323.packInstaller.installer.utils.DownloadUtils;
 import com.lightning323.packInstaller.installer.utils.HashUtils;
 import com.lightning323.packInstaller.installer.utils.IOUtils;
 
@@ -52,6 +53,6 @@ public class ModDownloader {
             throw new RuntimeException("Invalid mod update URL");
         }
 
-        IOUtils.downloadFile(url, modToml.download.hashFormat, modToml.download.hash, jarOutputPath.toFile(), true);
+        DownloadUtils.downloadFile(url, modToml.download.hashFormat, modToml.download.hash, jarOutputPath.toFile(), true);
     }
 }

@@ -61,9 +61,10 @@ public class PackInstaller implements Runnable {
             split = ","
     )
     public static HashSet<String> SPARE_CLEANUP = new HashSet<>();
-
     static {
         SPARE_CLEANUP.add("worlds");
+        SPARE_CLEANUP.add("saves");
+        SPARE_CLEANUP.add("config");
     }
 
     @Option(
@@ -72,7 +73,6 @@ public class PackInstaller implements Runnable {
             split = ","
     )
     public static HashSet<String> SPARE_OVERWRITE = new HashSet<>();
-
     static {
         SPARE_OVERWRITE.add("options.txt");
         SPARE_OVERWRITE.add("servers.dat");
