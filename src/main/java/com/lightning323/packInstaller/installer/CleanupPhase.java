@@ -38,6 +38,7 @@ public class CleanupPhase {
                                Set<Path> pathWhitelist, Set<Path> pathBlacklist) {
         //Check our whitelist and blacklist
         boolean isAllowed = false;
+        //Unless it is in the whitelist and NOT in the blacklist, it is not allowed
         for (Path p : pathWhitelist) {
             if (PathUtils.isInsideOrEqual(path, p)) {
                 isAllowed = true;
