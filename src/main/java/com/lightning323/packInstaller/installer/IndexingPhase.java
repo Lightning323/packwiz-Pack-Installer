@@ -4,6 +4,7 @@ import com.lightning323.packInstaller.installer.fileTypes.FileEntry;
 import com.lightning323.packInstaller.installer.fileTypes.IndexFile;
 import com.lightning323.packInstaller.installer.fileTypes.ModFile;
 import com.lightning323.packInstaller.installer.fileTypes.PackConfig;
+import com.lightning323.packInstaller.installer.gui.InstallerGui;
 import com.lightning323.packInstaller.installer.utils.IOUtils;
 import com.lightning323.packInstaller.installer.utils.downloading.ModDownloader;
 
@@ -39,6 +40,11 @@ public class IndexingPhase {
 
 
     public boolean index(Path savePath, PackConfig config, IndexFile indexData, URL indexURL) throws InterruptedException {
+        InstallerGui.setIndeterminate(true);
+        InstallerGui.setStatus("Indexing files...");
+        if (InstallerGui.isCancelled()) {
+            return false;
+        }
         //Read cache file
         CacheFile cacheFile = CacheFile.read(savePath);
         if (cacheFile != null) {
@@ -107,6 +113,9 @@ public class IndexingPhase {
 
         ExecutorService workerPool = Executors.newFixedThreadPool(4);
         for (FileEntry entry : indexData.files) {
+            if (InstallerGui.isCancelled()) {
+                break;
+            }
             workerPool.submit(() -> {
                 try {
                     Path path = savePath.resolve(entry.file());
@@ -144,6 +153,7 @@ public class IndexingPhase {
         cleanupWhitelist.clear();
         cleanupWhitelist.addAll(filtered);
         System.out.println("Cleanup whitelist: " + cleanupWhitelist.toString());
-        return true;
+        InstallerGui.setStatus("Indexing complete");
+        return !InstallerGui.isCancelled();
     }
 }

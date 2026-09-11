@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.dataformat.toml.TomlMapper;
 import com.lightning323.packInstaller.installer.fileTypes.IndexFile;
 import com.lightning323.packInstaller.installer.fileTypes.PackConfig;
+import com.lightning323.packInstaller.installer.gui.InstallerGui;
 import com.lightning323.packInstaller.installer.utils.UIUtils;
 
 import java.io.*;
@@ -19,6 +20,7 @@ import java.util.HashSet;
 import java.util.Properties;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+
 import static com.lightning323.packInstaller.installer.utils.IOUtils.getFileAsString;
 import static com.lightning323.packInstaller.installer.utils.IOUtils.getRelativeUrl;
 
@@ -54,6 +56,9 @@ public class PackInstaller implements Runnable {
     @Option(names = {"-shc", "--ship-hash-check"}, description = "If we should skip checking hashes")
     public static boolean SKIP_HASH_CHECK = false;
 
+    @Option(names = {"-no-gui", "--no-gui"}, description = "Disable the graphical progress window")
+    public static boolean NO_GUI = false;
+
     @Option(
             names = {"--spare-cleanup", "--sc"},
             description = "Files/directories to prevent deletion",
@@ -88,6 +93,8 @@ public class PackInstaller implements Runnable {
     private static void fail(String message) {
         System.err.println("\nFAIL:\n" + message.toUpperCase());
         UIUtils.detachedAlert("Installation failed", message);
+        InstallerGui.showError(message);
+        pauseForGuiOnError();
         System.exit(1);
     }
 
@@ -95,7 +102,25 @@ public class PackInstaller implements Runnable {
         System.err.println("\nFAIL:\n" + message.toUpperCase());
         UIUtils.detachedAlert("Installation failed", message);
         if (t != null) t.printStackTrace();
+        InstallerGui.showError(message + (t != null ? ": " + t.getMessage() : ""));
+        pauseForGuiOnError();
         System.exit(1);
+    }
+
+    /**
+     * Briefly keeps a visible GUI open on fatal errors so the message can be read
+     * before the JVM exits. No-op when the GUI is disabled or unavailable.
+     */
+    private static void pauseForGuiOnError() {
+        if (InstallerGui.isEnabled()) {
+            try {
+                Thread.sleep(4000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                InstallerGui.dispose();
+            }
+        }
     }
 
     // Setup Mapper
@@ -147,8 +172,18 @@ public class PackInstaller implements Runnable {
             System.exit(1);
         }
 
+        // Show the progress GUI unless disabled. If it cannot be displayed
+        // (headless OS, no display, ...), this only prints a warning and the
+        // installer carries on with console output.
+        if (!NO_GUI) {
+            InstallerGui.tryInit("Pack-Installer " + getProjectProperty("version"));
+        }
+        InstallerGui.setIndeterminate(true);
+        InstallerGui.setStatus("Installing...");
+
         try {
             long startTime = System.currentTimeMillis();
+            InstallerGui.setStatus("Fetching pack configuration...");
             System.out.println("Fetching pack configuration...");
             String packContent = getFileAsString(PACK_TOML_URL);
 
@@ -157,6 +192,9 @@ public class PackInstaller implements Runnable {
 
             System.out.println("--- Reading Pack TOML ---");
             System.out.println("Name: " + config.name);
+            if (config.name != null && !config.name.isEmpty()) {
+                InstallerGui.setTitle(config.name + " (Pack-Installer " + getProjectProperty("version") + ")");
+            }
             if (config.versions != null) {
                 System.out.println("Minecraft Version: " + config.versions.get("minecraft"));
             }
@@ -192,10 +230,22 @@ public class PackInstaller implements Runnable {
 
 
                 IndexingPhase indexingPhase = new IndexingPhase();
-                if (!indexingPhase.index(savePath, config, indexData, indexURL))
+                boolean needsWork = indexingPhase.index(savePath, config, indexData, indexURL);
+                if (InstallerGui.isCancelled()) {
                     return;
+                }
+                if (!needsWork) {
+                    InstallerGui.finish("Already up to date, nothing to do.");
+                    return;
+                }
 
                 DownloadPhase.downloadAllFiles(savePath, indexingPhase.allFiles);
+
+                if (InstallerGui.isCancelled()) {
+                    return;
+                }
+                InstallerGui.setIndeterminate(true);
+                InstallerGui.setStatus("Cleaning up...");
 
                 System.out.println("\n--- Cleanup ---");
                 CleanupPhase.cleanup(savePath, indexingPhase.allFiles, indexingPhase.cleanupWhitelist, indexingPhase.cleanupBlacklist);
@@ -216,8 +266,12 @@ public class PackInstaller implements Runnable {
                 w.indexHashFormat = config.index.hashFormat;
                 w.indexHash = config.index.hash;
                 w.write(savePath);
+
+                InstallerGui.finish("Download complete for \"" + config.name + "\"");
             } else {
                 System.err.println("No index found!");
+                InstallerGui.showError("No index found in pack.toml");
+                InstallerGui.dispose();
             }
 
         } catch (Exception e) {
