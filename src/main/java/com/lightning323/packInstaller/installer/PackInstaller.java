@@ -239,17 +239,22 @@ public class PackInstaller implements Runnable {
                     return;
                 }
 
-                DownloadPhase.downloadAllFiles(savePath, indexingPhase.allFiles);
-
-                if (InstallerGui.isCancelled()) {
-                    return;
-                }
                 InstallerGui.setIndeterminate(true);
                 InstallerGui.setStatus("Cleaning up...");
 
                 System.out.println("\n--- Cleanup ---");
                 CleanupPhase.cleanup(savePath, indexingPhase.allFiles, indexingPhase.cleanupWhitelist, indexingPhase.cleanupBlacklist);
                 System.out.println("\n--- Cleanup Complete ---");
+
+                if (InstallerGui.isCancelled()) {
+                    return;
+                }
+
+                DownloadPhase.downloadAllFiles(savePath, indexingPhase.allFiles);
+
+                if (InstallerGui.isCancelled()) {
+                    return;
+                }
 
                 System.out.println("Elapsed time: " + (System.currentTimeMillis() - startTime) / 1000 + "s");
 

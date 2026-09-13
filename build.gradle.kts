@@ -5,9 +5,10 @@ plugins {
 }
 
 group = "org.lightning323"
-version = "1.3.0"
+version = "1.4.0"
 
 tasks.processResources {
+    inputs.property("version", project.version)
     filesMatching("**/project.properties") {
         expand("version" to project.version)
     }
