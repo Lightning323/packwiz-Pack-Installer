@@ -229,7 +229,9 @@ public class PackInstaller implements Runnable {
                 System.out.println("\n--- Downloading to " + saveDir.getAbsolutePath() + " ---");
 
 
+                //DETERMINE IF WE NEED TO DO ANYTHING
                 IndexingPhase indexingPhase = new IndexingPhase();
+                //Check if all the files that we need are already there and hash correctly
                 boolean needsWork = indexingPhase.index(savePath, config, indexData, indexURL);
                 if (InstallerGui.isCancelled()) {
                     return;
@@ -242,6 +244,7 @@ public class PackInstaller implements Runnable {
                 InstallerGui.setIndeterminate(true);
                 InstallerGui.setStatus("Cleaning up...");
 
+                //STEP 2: CLEANUP
                 System.out.println("\n--- Cleanup ---");
                 CleanupPhase.cleanup(savePath, indexingPhase.allFiles, indexingPhase.cleanupWhitelist, indexingPhase.cleanupBlacklist);
                 System.out.println("\n--- Cleanup Complete ---");
@@ -250,6 +253,7 @@ public class PackInstaller implements Runnable {
                     return;
                 }
 
+                //STEP 3: DOWNLOAD
                 DownloadPhase.downloadAllFiles(savePath, indexingPhase.allFiles);
 
                 if (InstallerGui.isCancelled()) {
