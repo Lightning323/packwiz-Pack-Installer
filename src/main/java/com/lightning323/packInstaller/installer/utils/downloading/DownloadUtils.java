@@ -54,7 +54,7 @@ public class DownloadUtils {
             }
         } else {
             // Get initial file bytes
-            byte[] fileData = downloadWebBytes(url.toURI());
+            byte[] fileData = downloadWebBytes(toEncodedUri(url));
 
             // 1. Detect if this is a Git LFS pointer file
             String contentSample = new String(fileData, java.nio.charset.StandardCharsets.UTF_8);
@@ -65,6 +65,41 @@ public class DownloadUtils {
 
             IOUtils.writeFile(fileData, outFile, hashFormat, hash);
         }
+    }
+
+    protected static URI toEncodedUri(URL url) throws URISyntaxException {
+        try {
+            return url.toURI();
+        } catch (URISyntaxException e) {
+            // Some sources (e.g. Modrinth) embed raw file names with illegal URI characters
+            // (spaces, apostrophes, ...). Decode any existing %-escapes first so they are not
+            // double-encoded, then let the multi-argument constructor quote the illegal chars.
+            String decodedPath = decodePctEscapes(url.getPath());
+            return new URI(url.getProtocol(), url.getUserInfo(), url.getHost(), url.getPort(),
+                    decodedPath, url.getQuery(), url.getRef());
+        }
+    }
+
+    private static String decodePctEscapes(String path) {
+        if (path == null || path.indexOf('%') < 0) {
+            return path;
+        }
+        StringBuilder sb = new StringBuilder(path.length());
+        for (int i = 0; i < path.length(); i++) {
+            char c = path.charAt(i);
+            if (c == '%' && i + 2 < path.length()
+                    && isHex(path.charAt(i + 1)) && isHex(path.charAt(i + 2))) {
+                sb.append((char) Integer.parseInt(path.substring(i + 1, i + 3), 16));
+                i += 2;
+            } else {
+                sb.append(c);
+            }
+        }
+        return sb.toString();
+    }
+
+    private static boolean isHex(char c) {
+        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
     }
 
     protected static byte[] downloadWebBytes(URI uri) throws IOException, InterruptedException {
